@@ -23,6 +23,10 @@ typedef struct {
 } pkt_t;
 
 
-pkt_err_t parse_pkt(const char *buf, pkt_t *out);
+static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
+    (void)buf;
+    (void)out;
+    return (pkt_err_t)-99;
+}
 
 #endif
