@@ -24,12 +24,15 @@ jobs:
           sudo apt-get install -y build-essential cppcheck
 
       - name: Build (warnings are errors)
-        run: make CFLAGS="-Wall -Wextra -Werror -pthread -g"
+        run: make CFLAGS="-Wall -Wextra -Werror -std=c11 -pthread -g"
+
+      - name: Run tests
+        run: make test
 
       - name: Check all programs were built
         run: |
           for p in sentinel monitor client; do
-            test -x "$p" || { echo "::error::$p was not built"; exit 1; }
+            test -x "bin/$p" || { echo "::error::$p was not built"; exit 1; }
             echo "$p built OK"
           done
 
@@ -54,5 +57,5 @@ jobs:
         run: |
           make clean
           for p in sentinel monitor client; do
-            test ! -e "$p" || { echo "::error::$p not removed by make clean"; exit 1; }
+            test ! -e "bin/$p" || { echo "::error::$p not removed by make clean"; exit 1; }
           done
