@@ -1,5 +1,4 @@
-sentinel
-monitor
-client
+build/
+bin/
 !logs/.gitkeep
 *.o
