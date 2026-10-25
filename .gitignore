@@ -1,0 +1,5 @@
+sentinel
+monitor
+client
+!logs/.gitkeep
+*.o
