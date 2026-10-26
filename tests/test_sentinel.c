@@ -221,6 +221,142 @@ static void test_is_blacklisted_special(void){
 }
 
 
+typedef struct {
+    const char *name;
+    const char *text;
+    int output_code;
+    int expected_count;
+    const char *first_ip;
+} test_blacklist_parse_input_t;
+
+static const test_blacklist_parse_input_t test_blacklist_parse_inputs[] = {
+    {.name = "base_two_entries", .text = "10.0.0.66\n192.168.1.100\n", .output_code = BL_OK, .expected_count = 2, .first_ip = "10.0.0.66"},
+    {.name = "empty_text", .text = "", .output_code = BL_OK, .expected_count = 0, .first_ip = NULL},
+    {.name = "one_entry", .text = "10.0.0.66\n", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"},
+    {.name = "comment_line", .text = "# banned hosts\n10.0.0.66\n", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"},
+    {.name = "blank_lines", .text = "10.0.0.66\n\n192.168.1.100\n", .output_code = BL_OK, .expected_count = 2, .first_ip = "10.0.0.66"},
+    {.name = "padded_entry", .text = "  10.0.0.66  \n192.168.1.100\n", .output_code = BL_OK, .expected_count = 2, .first_ip = "10.0.0.66"},
+    {.name = "octet_out_of_range", .text = "999.9.9.9\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "non_ip_text", .text = "bogus\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "trailing_text", .text = "10.0.0.66 extra\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "inline_comment", .text = "10.0.0.66 # c\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "duplicate_entry", .text = "10.0.0.66\n10.0.0.66\n", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"},
+    {.name = "no_final_newline", .text = "10.0.0.66", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"},
+    {.name = "crlf_endings", .text = "10.0.0.66\r\n192.168.1.100\r\n", .output_code = BL_OK, .expected_count = 2, .first_ip = "10.0.0.66"},
+    {.name = "ipv6_entry", .text = "::1\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "cidr_entry", .text = "10.0.0.0/8\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "over_15_chars", .text = "1234567890123456\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "leading_zero", .text = "010.0.0.1\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "valid_then_invalid", .text = "10.0.0.66\nbogus\n192.168.1.100\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL}
+};
+
+static void test_blacklist_parse_table(void){
+    size_t num_tests = sizeof(test_blacklist_parse_inputs) / sizeof(test_blacklist_parse_inputs[0]);
+    for (size_t i = 0; i < num_tests; i++) {
+        const test_blacklist_parse_input_t tmp = test_blacklist_parse_inputs[i];
+        blacklist_t blk;
+        blacklist_t untouched;
+        memset(&blk, 0xAA, sizeof(blk));
+        memset(&untouched, 0xAA, sizeof(untouched));
+        bl_err_t result = blacklist_parse(tmp.text, &blk);
+        if(result != tmp.output_code) {
+            fprintf(stderr, "Test failed for input '%s': expected %d, got %d\n", tmp.name, tmp.output_code, (int)result);
+            failures++;
+        }
+        else{
+            printf("[PASS] '%s'\n", tmp.name);
+            if(result == BL_OK) {
+                if(blk.count != tmp.expected_count) {
+                    fprintf(stderr, "Test failed for input '%s': expected count %d, got %d\n", tmp.name, tmp.expected_count, blk.count);
+                    failures++;
+                }
+                else if(tmp.first_ip && strcmp(blk.ips[0], tmp.first_ip) != 0) {
+                    fprintf(stderr, "Test failed for input '%s': expected first ip '%s', got '%s'\n", tmp.name, tmp.first_ip, blk.ips[0]);
+                    failures++;
+                }
+            }
+        }
+        if(tmp.output_code != BL_OK && memcmp(&blk, &untouched, sizeof blk) != 0) {
+            fprintf(stderr, "Test failed for input '%s': blacklist modified on failure\n", tmp.name);
+            failures++;
+        }
+    }
+}
+
+// Writes n distinct "10.0.x.y" lines into buf
+static void build_ip_lines(char *buf, size_t size, int n){
+    size_t off = 0;
+    for (int i = 0; i < n; i++) {
+        off += (size_t)snprintf(buf + off, size - off, "10.0.%d.%d\n", i / 250, i % 250 + 1);
+    }
+}
+
+static void test_blacklist_parse_special(void){
+    static char text[4096];
+    blacklist_t bl;
+    blacklist_t untouched;
+    bl_err_t result;
+
+    memset(&bl, 0xAA, sizeof bl);
+    memset(&untouched, 0xAA, sizeof untouched);
+    result = blacklist_parse(NULL, &bl);
+    if(result != BL_ERR_NULL) {
+        fprintf(stderr, "Test failed: BP2 text NULL: expected %d, got %d\n", BL_ERR_NULL, (int)result);
+        failures++;
+    }
+    else{
+        printf("[PASS] BP2 text NULL\n");
+    }
+    if(memcmp(&bl, &untouched, sizeof bl) != 0) {
+        fprintf(stderr, "Test failed: BP2 text NULL: blacklist modified\n");
+        failures++;
+    }
+
+    result = blacklist_parse("10.0.0.66\n", NULL);
+    if(result != BL_ERR_NULL) {
+        fprintf(stderr, "Test failed: BP3 bl NULL: expected %d, got %d\n", BL_ERR_NULL, (int)result);
+        failures++;
+    }
+    else{
+        printf("[PASS] BP3 bl NULL\n");
+    }
+
+    memset(&bl, 0, sizeof bl);
+    build_ip_lines(text, sizeof text, BL_MAX);
+    result = blacklist_parse(text, &bl);
+    if(result != BL_OK) {
+        fprintf(stderr, "Test failed: BP6 exactly BL_MAX: expected %d, got %d\n", BL_OK, (int)result);
+        failures++;
+    }
+    else if(bl.count != BL_MAX) {
+        fprintf(stderr, "Test failed: BP6 exactly BL_MAX: expected count %d, got %d\n", BL_MAX, bl.count);
+        failures++;
+    }
+    else if(strcmp(bl.ips[BL_MAX - 1], "10.0.1.6") != 0) {
+        fprintf(stderr, "Test failed: BP6 exactly BL_MAX: last entry was '%s'\n", bl.ips[BL_MAX - 1]);
+        failures++;
+    }
+    else{
+        printf("[PASS] BP6 exactly BL_MAX\n");
+    }
+
+
+    memset(&bl, 0xAA, sizeof bl);
+    memset(&untouched, 0xAA, sizeof untouched);
+    build_ip_lines(text, sizeof text, BL_MAX + 1);
+    result = blacklist_parse(text, &bl);
+    if(result != BL_ERR_FULL) {
+        fprintf(stderr, "Test failed: BP7 BL_MAX + 1: expected %d, got %d\n", BL_ERR_FULL, (int)result);
+        failures++;
+    }
+    else{
+        printf("[PASS] BP7 BL_MAX + 1\n");
+    }
+    if(memcmp(&bl, &untouched, sizeof bl) != 0) {
+        fprintf(stderr, "Test failed: BP7 BL_MAX + 1: blacklist modified\n");
+        failures++;
+    }
+}
 
 int main(void)
 {
@@ -229,6 +365,8 @@ int main(void)
     test_null_pointers();
     test_is_blacklisted_table();
     test_is_blacklisted_special();
+    test_blacklist_parse_table();
+    test_blacklist_parse_special();
 
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
