@@ -973,14 +973,72 @@ static void test_fault_should_crash(void){
     }
 }
 
+typedef struct {
+    const char *name;
+    time_t sec;
+    long nsec;
+    long long expected;
+} test_timespec_t;
+
+static const test_timespec_t test_timespec_inputs[] = {
+    {.name = "zero", .sec = 0, .nsec = 0, .expected = 0},
+    {.name = "one second", .sec = 1, .nsec = 0, .expected = 1000},
+    {.name = "under a millisecond is truncated", .sec = 0, .nsec = 999999, .expected = 0},
+    {.name = "one millisecond", .sec = 0, .nsec = 1000000, .expected = 1},
+    {.name = "just under two seconds", .sec = 1, .nsec = 999999999, .expected = 1999},
+    {.name = "34 days, too big for 32 bits", .sec = 3000000, .nsec = 500000000, .expected = 3000000500LL}
+};
+
+static void test_timespec_to_ms(void){
+    size_t num_tests = sizeof(test_timespec_inputs) / sizeof(test_timespec_inputs[0]);
+    for(size_t i = 0; i < num_tests; i++) {
+        test_timespec_t row = test_timespec_inputs[i];
+        struct timespec ts = {.tv_sec = row.sec, .tv_nsec = row.nsec};
+        long long result = timespec_to_ms(&ts);
+        if(result != row.expected) {
+            fprintf(stderr, "Test failed for input '%s': expected %lld, got %lld\n", row.name, row.expected, result);
+            failures++;
+        }
+        else{
+            printf("[PASS] '%s'\n", row.name);
+        }
+    }
+
+    if(timespec_to_ms(NULL) != -1) {
+        fprintf(stderr, "Test failed: timespec NULL: expected -1, got %lld\n", timespec_to_ms(NULL));
+        failures++;
+    }
+    else{
+        printf("[PASS] timespec NULL\n");
+    }
+}
+
 static void test_now_ms(void){
     struct timespec pause = {0, 50 * 1000000L};
+    struct timespec before;
+    struct timespec after;
+    long long low;
+    long long high;
     long long first;
     long long second;
     long long prev;
     long long cur;
     long long delta;
     int bad;
+
+    // reads the clock it claims to: between two direct readings of CLOCK_MONOTONIC
+    clock_gettime(CLOCK_MONOTONIC, &before);
+    cur = now_ms();
+    clock_gettime(CLOCK_MONOTONIC, &after);
+    low = (long long)before.tv_sec * 1000 + (long long)before.tv_nsec / 1000000;
+    high = (long long)after.tv_sec * 1000 + (long long)after.tv_nsec / 1000000;
+    if(cur < low || cur > high) {
+        fprintf(stderr, "Test failed: now_ms matches clock: %lld is outside [%lld, %lld]\n", cur, low, high);
+        failures++;
+    }
+    else{
+        printf("[PASS] now_ms matches clock\n");
+    }
 
     first = now_ms();
     if(first < 0) {
@@ -1032,8 +1090,8 @@ static void test_pkt_strerror(void){
     bad = 0;
     for(size_t i = 0; i < num_codes; i++) {
         text = pkt_strerror(codes[i]);
-        if(!text || text[0] == '\0') {
-            fprintf(stderr, "Test failed: pkt_strerror message: code %d returned %s\n", codes[i], text ? "an empty string" : "NULL");
+        if(!text || text[0] == '\0' || strcmp(text, "unknown error") == 0) {
+            fprintf(stderr, "Test failed: pkt_strerror message: code %d returned '%s'\n", codes[i], text ? text : "NULL");
             bad = 1;
             break;
         }
@@ -1098,6 +1156,7 @@ int main(void)
     test_format_heartbeat_special();
     test_fault_next_sleep_ms();
     test_fault_should_crash();
+    test_timespec_to_ms();
     test_now_ms();
     test_pkt_strerror();
 

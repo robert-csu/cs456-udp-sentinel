@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
 #include "protocol.h"
 
 // parse_pkt error codes
@@ -291,15 +292,37 @@ static inline int fault_should_crash(unsigned *seed, int pct) {
     return (int)(rand_r(seed) % 100) < pct ? 1 : 0;
 }
 
+// converts a timespec to whole milliseconds (truncating), or -1 if ts is NULL
+static inline long long timespec_to_ms(const struct timespec *ts) {
+    if(!ts) {
+        return -1;
+    }
+    // long long so seconds * 1000 cannot overflow after weeks of uptime
+    return (long long)ts->tv_sec * 1000 + (long long)ts->tv_nsec / 1000000;
+}
+
 // monotonic clock in milliseconds, or -1 if the clock cannot be read
 static inline long long now_ms(void) {
-    return -99;
+    struct timespec ts;
+    if(clock_gettime(CLOCK_MONOTONIC, &ts) == -1) {
+        return -1;
+    }
+    return timespec_to_ms(&ts);
 }
 
 // short description of a parse_pkt result, or "unknown error"; never NULL
 static inline const char *pkt_strerror(int code) {
-    (void)code;
-    return NULL;
+    switch(code) {
+        case PKT_OK: return "ok";
+        case PKT_ERR_NULL: return "null argument";
+        case PKT_ERR_FORMAT: return "malformed packet";
+        case PKT_ERR_TRAILING: return "unexpected trailing data";
+        case PKT_ERR_SRC: return "invalid source address";
+        case PKT_ERR_PORT: return "invalid destination port";
+        case PKT_ERR_SEQ: return "invalid sequence number";
+        case PKT_ERR_CHAR: return "illegal character in payload";
+        default: return "unknown error";
+    }
 }
 
 #endif
