@@ -57,13 +57,12 @@ static void handle_datagram(const blacklist_t *bl, char *buf, ssize_t len, const
         return;
     }
 
-    // is_blacklisted returns -1 on a bad argument, which also counts as blocked
+
     const char *verdict = is_blacklisted(bl, pkt.src) != 0 ? "blocked" : "accepted";
     printf("%s %s (dst_port %d, seq %d)\n", verdict, pkt.src, pkt.dst_port, pkt.seq);
 }
 
 int main(int argc, char *argv[]) {
-    // line buffered, so log lines show up even when stdout is a file or pipe
     setvbuf(stdout, NULL, _IOLBF, 0);
 
     const char *blacklist_path = "config/blacklist.txt";
