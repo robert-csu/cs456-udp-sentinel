@@ -247,7 +247,18 @@ static const test_blacklist_parse_input_t test_blacklist_parse_inputs[] = {
     {.name = "cidr_entry", .text = "10.0.0.0/8\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
     {.name = "over_15_chars", .text = "1234567890123456\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
     {.name = "leading_zero", .text = "010.0.0.1\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
-    {.name = "valid_then_invalid", .text = "10.0.0.66\nbogus\n192.168.1.100\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL}
+    {.name = "valid_then_invalid", .text = "10.0.0.66\nbogus\n192.168.1.100\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "line_63_chars", .text = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "line_64_chars", .text = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "line_100_chars", .text = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "indented_comment", .text = "   # note\n10.0.0.66\n", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"},
+    {.name = "crlf_blank_line", .text = "10.0.0.66\r\n\r\n1.2.3.4\r\n", .output_code = BL_OK, .expected_count = 2, .first_ip = "10.0.0.66"},
+    {.name = "spaces_only_line", .text = "10.0.0.66\n    \n1.2.3.4\n", .output_code = BL_OK, .expected_count = 2, .first_ip = "10.0.0.66"},
+    {.name = "only_comments", .text = "# a\n# b\n", .output_code = BL_OK, .expected_count = 0, .first_ip = NULL},
+    {.name = "padded_duplicate", .text = "10.0.0.66\n  10.0.0.66  \n", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"},
+    {.name = "tab_inside_entry", .text = "10.0.0.66\t1.2.3.4\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "long_comment_line", .text = "# aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n10.0.0.66\n", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"},
+    {.name = "long_whitespace_line", .text = "                                                                      \n10.0.0.66\n", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"}
 };
 
 static void test_blacklist_parse_table(void){
@@ -355,6 +366,23 @@ static void test_blacklist_parse_special(void){
     if(memcmp(&bl, &untouched, sizeof bl) != 0) {
         fprintf(stderr, "Test failed: BL_MAX + 1: blacklist modified\n");
         failures++;
+    }
+
+    // BL_MAX entries followed by a repeat of an existing one is still OK
+    memset(&bl, 0, sizeof bl);
+    build_ip_lines(text, sizeof text, BL_MAX);
+    snprintf(text + strlen(text), sizeof text - strlen(text), "10.0.0.1\n");
+    result = blacklist_parse(text, &bl);
+    if(result != BL_OK) {
+        fprintf(stderr, "Test failed: full list plus repeat: expected %d, got %d\n", BL_OK, (int)result);
+        failures++;
+    }
+    else if(bl.count != BL_MAX) {
+        fprintf(stderr, "Test failed: full list plus repeat: expected count %d, got %d\n", BL_MAX, bl.count);
+        failures++;
+    }
+    else{
+        printf("[PASS] full list plus repeat\n");
     }
 }
 

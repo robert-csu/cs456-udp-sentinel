@@ -119,41 +119,41 @@ static inline bl_err_t blacklist_parse(const char *text, blacklist_t *bl) {
     const char *line = text;
     while(*line != '\0') {
         size_t line_len = strcspn(line, "\n");
+        const char *end = line + line_len;
+        const char *next = (*end == '\n') ? end + 1 : end;
+
+        // skip leading whitespace on the original text, before any length limit
+        const char *p = line;
+        while (p < end && (*p == ' ' || *p == '\t' || *p == '\r')) {
+            p++;
+        }
+        if (p == end || *p == '#') {
+            line = next;
+            continue;
+        }
+
         char buf[64];
-        if (line_len >= sizeof(buf)) {
+        size_t span = (size_t)(end - p);
+        if (span >= sizeof(buf)) {
             return BL_ERR_BAD_ENTRY;
         }
 
-        memcpy(buf, line, line_len);
-        buf[line_len] = '\0';
+        memcpy(buf, p, span);
+        buf[span] = '\0';
 
-        int tail = (int)line_len - 1;
+        int tail = (int)span - 1;
         while (tail >= 0 && (buf[tail] == ' ' || buf[tail] == '\t' || buf[tail] == '\r')) {
             buf[tail] = '\0';
             tail--;
         }
 
         char *entry = buf;
-        while (*entry == ' ' || *entry == '\t') {
-            entry++;
-        }
-        if (*entry == '\0') {
-            line += line_len;
-            if (*line == '\n') line++;
-            continue;
-        }
-        if (*entry == '#') {
-            line += line_len;
-            if (*line == '\n') line++;
-            continue;
+        if (strlen(entry) >= SRC_IP_LEN) {
+            return BL_ERR_BAD_ENTRY;
         }
 
         struct in_addr addr;
         if (inet_pton(AF_INET, entry, &addr) != 1) {
-            return BL_ERR_BAD_ENTRY;
-        }
-
-        if (strlen(entry) >= SRC_IP_LEN) {
             return BL_ERR_BAD_ENTRY;
         }
 
@@ -166,8 +166,7 @@ static inline bl_err_t blacklist_parse(const char *text, blacklist_t *bl) {
         }
 
         if (is_duplicate) {
-            line += line_len;
-            if (*line == '\n') line++;
+            line = next;
             continue;
         }
 
@@ -179,11 +178,7 @@ static inline bl_err_t blacklist_parse(const char *text, blacklist_t *bl) {
         tmp.ips[tmp.count][SRC_IP_LEN - 1] = '\0';
         tmp.count++;
 
-        line += line_len;
-        if (*line == '\n') {
-            line++;
-        }
-
+        line = next;
     }
 
     memcpy(bl, &tmp, sizeof(blacklist_t));
