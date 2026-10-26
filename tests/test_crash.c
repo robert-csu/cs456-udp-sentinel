@@ -146,7 +146,8 @@ static void test_stop_flag_prevents_crash(void)
     waitpid(pid, &status, 0);
     long long elapsed = mono_ms() - start;
 
-    CHECK(elapsed >= 200, "Thread stopped before its sleep finished");
+    // the child waits 50 ms before stopping; a thread sleeping its full 200-300 ms delay would exceed this
+    CHECK(elapsed < 200, "Thread did not stop promptly after the stop request");
     CHECK(!WIFSIGNALED(status), "Child crashed even though stop was requested");
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0, "Child did not exit cleanly after stop");
 }

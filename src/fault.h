@@ -16,6 +16,18 @@ typedef struct {
     atomic_int *rolls;
 } fault_args_t;
 
+#define FAULT_SLICE_MS 50
+
+// sleeps ms milliseconds in short slices so a stop request is noticed within one slice
+static inline void fault_sleep_ms(int ms, atomic_int *stop) {
+    while(ms > 0 && !atomic_load(stop)) {
+        int slice = ms < FAULT_SLICE_MS ? ms : FAULT_SLICE_MS;
+        struct timespec wait = {.tv_sec = slice / 1000, .tv_nsec = (slice % 1000) * 1000000L};
+        nanosleep(&wait, NULL);
+        ms -= slice;
+    }
+}
+
 static inline void *fault_thread(void *arg){
     fault_args_t args = *(fault_args_t *)arg;
 
@@ -25,8 +37,7 @@ static inline void *fault_thread(void *arg){
             return NULL;
         }
         
-        struct timespec wait = {.tv_sec = ms / 1000, .tv_nsec = (ms % 1000) * 1000000L};
-        nanosleep(&wait, NULL);
+        fault_sleep_ms(ms, args.stop);
 
         if(atomic_load(args.stop)) {
             break;
