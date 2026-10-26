@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 #include "protocol.h"
 #include "sentinel_core.h"
 
@@ -645,6 +646,103 @@ static void test_blacklist_load_special(void){
     }
 }
 
+
+typedef struct{
+    const char *name;
+    size_t n;
+    int pid;
+    int seq;
+    long long ts;
+    int output_code;
+    const char *expected_text;
+} test_format_heartbeat_t;
+
+static const test_format_heartbeat_t test_format_heartbeat_inputs[] = {
+    {.name = "base", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 5, .ts = 1500, .output_code = 32, .expected_text = "HEARTBEAT|pid=1234|seq=5|ts=1500"},
+    {.name = "n_exact_fit", .n = 33, .pid = 1234, .seq = 5, .ts = 1500, .output_code = 32, .expected_text = "HEARTBEAT|pid=1234|seq=5|ts=1500"},
+    {.name = "n_one_short", .n = 32, .pid = 1234, .seq = 5, .ts = 1500, .output_code = HB_ERR_TRUNC, .expected_text = NULL},
+    {.name = "n_one", .n = 1, .pid = 1234, .seq = 5, .ts = 1500, .output_code = HB_ERR_TRUNC, .expected_text = NULL},
+    {.name = "n_zero", .n = 0, .pid = 1234, .seq = 5, .ts = 1500, .output_code = HB_ERR_TRUNC, .expected_text = NULL},
+    {.name = "pid_min", .n = MAX_PKT_SIZE, .pid = 1, .seq = 5, .ts = 1500, .output_code = 29, .expected_text = "HEARTBEAT|pid=1|seq=5|ts=1500"},
+    {.name = "pid_int_max", .n = MAX_PKT_SIZE, .pid = INT_MAX, .seq = 5, .ts = 1500, .output_code = 38, .expected_text = "HEARTBEAT|pid=2147483647|seq=5|ts=1500"},
+    {.name = "pid_zero", .n = MAX_PKT_SIZE, .pid = 0, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
+    {.name = "pid_negative", .n = MAX_PKT_SIZE, .pid = -1, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
+    {.name = "seq_zero", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 0, .ts = 1500, .output_code = 32, .expected_text = "HEARTBEAT|pid=1234|seq=0|ts=1500"},
+    {.name = "seq_int_max", .n = MAX_PKT_SIZE, .pid = 1234, .seq = INT_MAX, .ts = 1500, .output_code = 41, .expected_text = "HEARTBEAT|pid=1234|seq=2147483647|ts=1500"},
+    {.name = "seq_negative", .n = MAX_PKT_SIZE, .pid = 1234, .seq = -1, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
+    {.name = "ts_zero", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 5, .ts = 0, .output_code = 29, .expected_text = "HEARTBEAT|pid=1234|seq=5|ts=0"},
+    {.name = "ts_llong_max", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 5, .ts = LLONG_MAX, .output_code = 47, .expected_text = "HEARTBEAT|pid=1234|seq=5|ts=9223372036854775807"},
+    {.name = "ts_negative", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 5, .ts = -1, .output_code = HB_ERR_RANGE, .expected_text = NULL}
+};
+
+static void test_format_heartbeat(void){
+    size_t num_tests = sizeof(test_format_heartbeat_inputs) / sizeof(test_format_heartbeat_inputs[0]);
+    for(size_t i = 0; i < num_tests; i++){
+        test_format_heartbeat_t row = test_format_heartbeat_inputs[i];
+        char buf[MAX_PKT_SIZE];
+        memset(buf, 0xAA, sizeof(buf));
+        int result = format_heartbeat(buf, row.n, row.pid, row.seq, row.ts);
+        if(result != row.output_code){
+            fprintf(stderr, "Test failed for input '%s': expected %d, got %d\n", row.name, row.output_code, result);
+            failures++;
+            continue;
+        }
+
+        if(result > 0){
+            // strnlen so a missing terminator is reported and not read past the buffer
+            size_t len = strnlen(buf, sizeof(buf));
+            int got_pid = 0;
+            int got_seq = 0;
+            long long got_ts = 0;
+            if(len == sizeof(buf) || (size_t)result != len){
+                fprintf(stderr, "Test failed for input '%s': returned length %d, buffer holds %zu\n", row.name, result, len);
+                failures++;
+            }
+            else if(strcmp(buf, row.expected_text) != 0){
+                fprintf(stderr, "Test failed for input '%s': expected '%s', got '%s'\n", row.name, row.expected_text, buf);
+                failures++;
+            }
+            else if(sscanf(buf, HB_FMT_IN, &got_pid, &got_seq, &got_ts) != 3
+                    || got_pid != row.pid || got_seq != row.seq || got_ts != row.ts){
+                fprintf(stderr, "Test failed for input '%s': round trip through HB_FMT_IN did not match\n", row.name);
+                failures++;
+            }
+            else{
+                printf("[PASS] '%s'\n", row.name);
+            }
+        }
+        else if(row.n > 0){
+            if(buf[0] != '\0'){
+                fprintf(stderr, "Test failed for input '%s': buffer not emptied on failure\n", row.name);
+                failures++;
+            }
+            else{
+                printf("[PASS] '%s'\n", row.name);
+            }
+        }
+        else{
+            if((unsigned char)buf[0] != 0xAA){
+                fprintf(stderr, "Test failed for input '%s': buffer modified although n is 0\n", row.name);
+                failures++;
+            }
+            else{
+                printf("[PASS] '%s'\n", row.name);
+            }
+        }
+    }
+}
+
+static void test_format_heartbeat_special(void){
+    int result = format_heartbeat(NULL, MAX_PKT_SIZE, 1234, 5, 1500);
+    if(result != HB_ERR_NULL){
+        fprintf(stderr, "Test failed: buf NULL: expected %d, got %d\n", HB_ERR_NULL, result);
+        failures++;
+    }
+    else{
+        printf("[PASS] buf NULL\n");
+    }
+}
+
 int main(void)
 {
     test_packet_inputs();
@@ -656,6 +754,8 @@ int main(void)
     test_is_blacklisted_special();
     test_blacklist_parse_table();
     test_blacklist_parse_special();
+    test_format_heartbeat();
+    test_format_heartbeat_special();
 
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);

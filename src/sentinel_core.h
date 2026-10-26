@@ -32,6 +32,13 @@ typedef enum {
     BL_ERR_IO = -4 // file could not be opened or read
 } bl_err_t;
 
+// format_heartbeat error codes
+typedef enum{
+    HB_ERR_NULL = -1, // buf is NULL
+    HB_ERR_TRUNC = -2, // n is too small for the message
+    HB_ERR_RANGE = -3 // pid <= 0, seq < 0, ts < 0
+} hb_err_t;
+
 typedef struct {
     char src[SRC_IP_LEN];
     int dst_port;
@@ -243,6 +250,16 @@ static inline bl_err_t blacklist_load(const char *path, blacklist_t *bl) {
     free(buf);
     close(fd);
     return result;
+}
+
+// writes HEARTBEAT|pid=<n>|seq=<n>|ts=<ms since start> into buf; returns the length written
+static inline int format_heartbeat(char *buf, size_t n, int pid, int seq, long long ts) {
+    (void)buf;
+    (void)n;
+    (void)pid;
+    (void)seq;
+    (void)ts;
+    return -99;
 }
 
 #endif
