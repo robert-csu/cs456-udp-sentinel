@@ -18,12 +18,26 @@ typedef enum {
     PKT_ERR_CHAR = -7 // illegal '|' in payload
 } pkt_err_t;
 
+// blacklist_parse / blacklist_load error codes
+typedef enum {
+    BL_OK = 0,
+    BL_ERR_NULL = -1, // text, path or bl is NULL
+    BL_ERR_BAD_ENTRY = -2, // a non-blank, non-comment line is not a valid IPv4 address
+    BL_ERR_FULL = -3, // more than BL_MAX unique entries
+    BL_ERR_IO = -4 // file could not be opened or read
+} bl_err_t;
+
 typedef struct {
     char src[SRC_IP_LEN];
     int dst_port;
     int seq;
     char payload[PAYLOAD_LEN];
 } pkt_t;
+
+typedef struct{
+    char ips[BL_MAX][SRC_IP_LEN];
+    int count;
+}blacklist_t;
 
 
 static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
@@ -77,6 +91,33 @@ static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
     strcpy(out->payload, payload);
 
     return PKT_OK;
+}
+
+// 1 = blocked, 0 = not blocked, -1 = NULL argument
+static inline int is_blacklisted(const blacklist_t *bl, const char *ip) {
+    if(!bl || !ip) {
+        return -1;
+    }
+    for(int i = 0; i < bl->count; i++) {
+        if(strcmp(bl->ips[i], ip) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// text is the file contents; fills bl only on success
+static inline bl_err_t blacklist_parse(const char *text, blacklist_t *bl) {
+    (void)text;
+    (void)bl;
+    return (bl_err_t)-99;
+}
+
+// reads the file at path and passes its contents to blacklist_parse
+static inline bl_err_t blacklist_load(const char *path, blacklist_t *bl) {
+    (void)path;
+    (void)bl;
+    return (bl_err_t)-99;
 }
 
 #endif

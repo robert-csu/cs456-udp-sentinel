@@ -139,6 +139,87 @@ static void test_null_pointers(void){
 }
 
 
+typedef struct {
+    const char *name;
+    const char *entries[3];
+    int n;
+    const char *ip;
+    int expected;
+} test_is_blacklist_t;
+
+static const test_is_blacklist_t test_is_blacklist_inputs[] = {
+    {.name = "hit_first", .entries = {"10.0.0.66", "192.168.1.100"}, .n = 2, .ip = "10.0.0.66", .expected = 1},
+    {.name = "ip_null", .entries = {"10.0.0.66", "192.168.1.100"}, .n = 2, .ip = NULL, .expected = -1},
+    {.name = "hit_last", .entries = {"10.0.0.66", "192.168.1.100"}, .n = 2, .ip = "192.168.1.100", .expected = 1},
+    {.name = "miss", .entries = {"10.0.0.66", "192.168.1.100"}, .n = 2, .ip = "8.8.8.8", .expected = 0},
+    {.name = "shorter_near_miss", .entries = {"10.0.0.66", "192.168.1.100"}, .n = 2, .ip = "10.0.0.6", .expected = 0},
+    {.name = "longer_near_miss", .entries = {"10.0.0.66", "192.168.1.100"}, .n = 2, .ip = "10.0.0.666", .expected = 0},
+    {.name = "trailing_space", .entries = {"10.0.0.66", "192.168.1.100"}, .n = 2, .ip = "10.0.0.66 ", .expected = 0},
+    {.name = "empty_ip", .entries = {"10.0.0.66", "192.168.1.100"}, .n = 2, .ip = "", .expected = 0},
+    {.name = "empty_list", .entries = {NULL}, .n = 0, .ip = "10.0.0.66", .expected = 0}
+};
+
+static void test_is_blacklisted_table(void){
+    size_t num_tests = sizeof(test_is_blacklist_inputs) / sizeof(test_is_blacklist_inputs[0]);
+
+    for (size_t i = 0; i < num_tests; i++) {
+        const test_is_blacklist_t tmp = test_is_blacklist_inputs[i];
+        blacklist_t bl;
+        memset(&bl, 0, sizeof bl);
+        for (int j = 0; j < tmp.n; j++) {
+            snprintf(bl.ips[j], sizeof bl.ips[j], "%s", tmp.entries[j]);
+        }
+        bl.count = tmp.n;
+        int actual = is_blacklisted(&bl, tmp.ip);
+        if (actual != tmp.expected) {
+            fprintf(stderr, "Test failed: %s\n", tmp.name);
+            failures++;
+        }
+        else{
+            printf("[PASS] '%s'\n", tmp.name);
+        }
+    }
+}
+
+static void test_is_blacklisted_special(void){
+    blacklist_t blk;
+    int result = is_blacklisted(NULL, "10.0.0.66");
+    if (result != -1) {
+        fprintf(stderr, "Test failed: NULL blacklist test\n");
+        failures++;
+    }
+    else{
+        printf("[PASS] NULL blacklist test\n");
+    }
+
+    memset(&blk, 0, sizeof(blk));
+    for(int i = 0; i < BL_MAX; i++){
+        snprintf(blk.ips[i], sizeof blk.ips[i], "10.0.%d.%d", i / 250, i % 250 + 1);
+    }
+    blk.count = BL_MAX;
+    result = is_blacklisted(&blk, blk.ips[BL_MAX - 1]);
+    if(result != 1) {
+        fprintf(stderr, "Test failed: Full blacklist test\n");
+        failures++;
+    }
+    else{
+        printf("[PASS] Full blacklist test\n");
+    }
+
+    memset(&blk, 0, sizeof(blk));
+    snprintf(blk.ips[0], sizeof blk.ips[0], "10.0.0.66");
+    snprintf(blk.ips[1], sizeof blk.ips[1], "192.168.1.100");
+    blk.count = 1;
+    result = is_blacklisted(&blk, "192.168.1.100");
+    if(result != 0) {
+        fprintf(stderr, "Test failed: Partial blacklist test\n");
+        failures++;
+    }
+    else{
+        printf("[PASS] Partial blacklist test\n");
+    }
+}
+
 
 
 int main(void)
@@ -146,6 +227,8 @@ int main(void)
     test_packet_inputs();
     test_long_payloads();
     test_null_pointers();
+    test_is_blacklisted_table();
+    test_is_blacklisted_special();
 
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
