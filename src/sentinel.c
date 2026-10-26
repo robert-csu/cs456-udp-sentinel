@@ -1,5 +1,9 @@
 #include <stdio.h>
 #include "protocol.h"
+#include "sentinel_core.h"
+
+
+
 
 int main(void)
 {
