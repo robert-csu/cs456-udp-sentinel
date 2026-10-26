@@ -254,12 +254,25 @@ static inline bl_err_t blacklist_load(const char *path, blacklist_t *bl) {
 
 // writes HEARTBEAT|pid=<n>|seq=<n>|ts=<ms since start> into buf; returns the length written
 static inline int format_heartbeat(char *buf, size_t n, int pid, int seq, long long ts) {
-    (void)buf;
-    (void)n;
-    (void)pid;
-    (void)seq;
-    (void)ts;
-    return -99;
+    if(!buf) {
+        return HB_ERR_NULL;
+    }
+    if(pid <=0 || seq < 0 || ts < 0) {
+        if(n > 0) {
+            buf[0] = '\0';
+        }
+        return HB_ERR_RANGE;
+    }
+    
+    int written  = snprintf(buf, n, HB_FMT_OUT, pid, seq, ts);
+
+    if(written < 0 || (size_t)written >= n) {
+        if(n > 0) {
+            buf[0] = '\0';
+        }
+        return HB_ERR_TRUNC;
+    }
+    return written;
 }
 
 #endif

@@ -666,6 +666,7 @@ static const test_format_heartbeat_t test_format_heartbeat_inputs[] = {
     {.name = "pid_min", .n = MAX_PKT_SIZE, .pid = 1, .seq = 5, .ts = 1500, .output_code = 29, .expected_text = "HEARTBEAT|pid=1|seq=5|ts=1500"},
     {.name = "pid_int_max", .n = MAX_PKT_SIZE, .pid = INT_MAX, .seq = 5, .ts = 1500, .output_code = 38, .expected_text = "HEARTBEAT|pid=2147483647|seq=5|ts=1500"},
     {.name = "pid_zero", .n = MAX_PKT_SIZE, .pid = 0, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
+    {.name = "pid_zero_n_zero", .n = 0, .pid = 0, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
     {.name = "pid_negative", .n = MAX_PKT_SIZE, .pid = -1, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
     {.name = "seq_zero", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 0, .ts = 1500, .output_code = 32, .expected_text = "HEARTBEAT|pid=1234|seq=0|ts=1500"},
     {.name = "seq_int_max", .n = MAX_PKT_SIZE, .pid = 1234, .seq = INT_MAX, .ts = 1500, .output_code = 41, .expected_text = "HEARTBEAT|pid=1234|seq=2147483647|ts=1500"},
