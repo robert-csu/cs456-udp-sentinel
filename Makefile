@@ -1,5 +1,5 @@
 CC ?= gcc
-CFLAGS ?= -Wall -Wextra -std=c11 -O2 -g
+CFLAGS ?= -Wall -Wextra -std=c11 -O2 -g -pthread
 CFLAGS += -MMD -MP
 
 SRC = src
@@ -45,4 +45,4 @@ clean:
 distclean: clean
 	find logs -type f ! -name .gitkeep -delete
 
--include $(wildcard $(BUILD)/*.d)
+-include $(wildcard $(BUILD)/*.d) $(wildcard $(BIN)/tests/*.d) $(wildcard $(BIN)/tests/*.d)
