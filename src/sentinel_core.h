@@ -291,4 +291,15 @@ static inline int fault_should_crash(unsigned *seed, int pct) {
     return (int)(rand_r(seed) % 100) < pct ? 1 : 0;
 }
 
+// monotonic clock in milliseconds, or -1 if the clock cannot be read
+static inline long long now_ms(void) {
+    return -99;
+}
+
+// short description of a parse_pkt result, or "unknown error"; never NULL
+static inline const char *pkt_strerror(int code) {
+    (void)code;
+    return NULL;
+}
+
 #endif

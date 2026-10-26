@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <stdio.h>
@@ -972,6 +973,116 @@ static void test_fault_should_crash(void){
     }
 }
 
+static void test_now_ms(void){
+    struct timespec pause = {0, 50 * 1000000L};
+    long long first;
+    long long second;
+    long long prev;
+    long long cur;
+    long long delta;
+    int bad;
+
+    first = now_ms();
+    if(first < 0) {
+        fprintf(stderr, "Test failed: now_ms non-negative: returned %lld\n", first);
+        failures++;
+    }
+    else{
+        printf("[PASS] now_ms non-negative\n");
+    }
+
+    prev = now_ms();
+    bad = 0;
+    for(int i = 0; i < 1000; i++) {
+        cur = now_ms();
+        if(cur < 0 || cur < prev) {
+            fprintf(stderr, "Test failed: now_ms monotonic: call %d returned %lld after %lld\n", i, cur, prev);
+            bad = 1;
+            break;
+        }
+        prev = cur;
+    }
+    if(bad) {
+        failures++;
+    }
+    else{
+        printf("[PASS] now_ms monotonic\n");
+    }
+
+    first = now_ms();
+    nanosleep(&pause, NULL);
+    second = now_ms();
+    delta = second - first;
+    if(first < 0 || delta < 45 || delta > 1000) {
+        fprintf(stderr, "Test failed: now_ms units: a 50 ms pause moved the clock by %lld\n", delta);
+        failures++;
+    }
+    else{
+        printf("[PASS] now_ms units\n");
+    }
+}
+
+static void test_pkt_strerror(void){
+    const int codes[] = {PKT_OK, PKT_ERR_NULL, PKT_ERR_FORMAT, PKT_ERR_TRAILING, PKT_ERR_SRC, PKT_ERR_PORT, PKT_ERR_SEQ, PKT_ERR_CHAR};
+    size_t num_codes = sizeof(codes) / sizeof(codes[0]);
+    const char *text;
+    const char *other;
+    int bad;
+
+    bad = 0;
+    for(size_t i = 0; i < num_codes; i++) {
+        text = pkt_strerror(codes[i]);
+        if(!text || text[0] == '\0') {
+            fprintf(stderr, "Test failed: pkt_strerror message: code %d returned %s\n", codes[i], text ? "an empty string" : "NULL");
+            bad = 1;
+            break;
+        }
+    }
+    if(bad) {
+        failures++;
+    }
+    else{
+        printf("[PASS] pkt_strerror message\n");
+    }
+
+    bad = 0;
+    for(size_t i = 0; i < num_codes && !bad; i++) {
+        for(size_t j = i + 1; j < num_codes; j++) {
+            text = pkt_strerror(codes[i]);
+            other = pkt_strerror(codes[j]);
+            if(!text || !other || strcmp(text, other) == 0) {
+                fprintf(stderr, "Test failed: pkt_strerror distinct: codes %d and %d have the same message\n", codes[i], codes[j]);
+                bad = 1;
+                break;
+            }
+        }
+    }
+    if(bad) {
+        failures++;
+    }
+    else{
+        printf("[PASS] pkt_strerror distinct\n");
+    }
+
+    text = pkt_strerror(-99);
+    if(!text || strcmp(text, "unknown error") != 0) {
+        fprintf(stderr, "Test failed: pkt_strerror unknown code: got '%s'\n", text ? text : "NULL");
+        failures++;
+    }
+    else{
+        printf("[PASS] pkt_strerror unknown code\n");
+    }
+
+    text = pkt_strerror(1);
+    if(!text || strcmp(text, "unknown error") != 0) {
+        fprintf(stderr, "Test failed: pkt_strerror positive code: got '%s'\n", text ? text : "NULL");
+        failures++;
+    }
+    else{
+        printf("[PASS] pkt_strerror positive code\n");
+    }
+}
+
 int main(void)
 {
     test_packet_inputs();
@@ -987,6 +1098,8 @@ int main(void)
     test_format_heartbeat_special();
     test_fault_next_sleep_ms();
     test_fault_should_crash();
+    test_now_ms();
+    test_pkt_strerror();
 
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
