@@ -1,6 +1,10 @@
 #ifndef SENTINEL_CORE_H
 #define SENTINEL_CORE_H
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <stdlib.h>
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -187,9 +191,58 @@ static inline bl_err_t blacklist_parse(const char *text, blacklist_t *bl) {
 
 // reads the file at path and passes its contents to blacklist_parse
 static inline bl_err_t blacklist_load(const char *path, blacklist_t *bl) {
-    (void)path;
-    (void)bl;
-    return (bl_err_t)-99;
+    if(!path || !bl) {
+        return BL_ERR_NULL;
+    }
+    
+    int fd = open(path, O_RDONLY);
+    if(fd == -1) {
+        return BL_ERR_IO;
+    }
+    
+    struct stat sb;
+    if(fstat(fd, &sb) == -1) {
+        close(fd);
+        return BL_ERR_IO;
+    }
+    if(!S_ISREG(sb.st_mode)) {
+        close(fd);
+        return BL_ERR_IO;
+    }
+    off_t size = sb.st_size;
+    if(size > BL_FILE_MAX) {
+        close(fd);
+        return BL_ERR_IO;
+    }
+
+    char *buf = malloc(size + 1);
+    if(!buf) {
+        close(fd);
+        return BL_ERR_IO;
+    }
+
+    off_t total = 0;
+    while(total < size) {
+        ssize_t n = read(fd, buf + total, size - total);
+        if(n <= 0) {
+            free(buf);
+            close(fd);
+            return BL_ERR_IO;
+        }
+        total += n;
+    }
+    buf[total] = '\0';
+
+    if(strlen(buf) != (size_t)size) {
+        free(buf);
+        close(fd);
+        return BL_ERR_BAD_ENTRY;
+    }
+
+    bl_err_t result = blacklist_parse(buf, bl);
+    free(buf);
+    close(fd);
+    return result;
 }
 
 #endif

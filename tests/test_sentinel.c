@@ -534,6 +534,20 @@ static void test_blacklist_load_special(void){
     }
 
     memset(&bl, 0xAA, sizeof bl);
+    result = blacklist_load("/dev/null", &bl);
+    if(result != BL_ERR_IO) {
+        fprintf(stderr, "Test failed: device file: expected %d, got %d\n", BL_ERR_IO, (int)result);
+        failures++;
+    }
+    else{
+        printf("[PASS] device file\n");
+    }
+    if(memcmp(&bl, &untouched, sizeof bl) != 0) {
+        fprintf(stderr, "Test failed: device file: blacklist modified\n");
+        failures++;
+    }
+
+    memset(&bl, 0xAA, sizeof bl);
     if(write_temp_file(nul_content, sizeof nul_content - 1, path) != 0) {
         fprintf(stderr, "Test failed: NUL byte: unable to write temporary file\n");
         failures++;
