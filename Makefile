@@ -45,4 +45,4 @@ clean:
 distclean: clean
 	find logs -type f ! -name .gitkeep -delete
 
--include $(wildcard $(BUILD)/*.d)
+-include $(wildcard $(BUILD)/*.d) $(wildcard $(BIN)/tests/*.d)

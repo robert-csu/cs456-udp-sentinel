@@ -1,6 +1,7 @@
 #ifndef SENTINEL_CORE_H
 #define SENTINEL_CORE_H
 
+#include <arpa/inet.h>
 #include "protocol.h"
 
 // parse_pkt error codes
@@ -24,9 +25,56 @@ typedef struct {
 
 
 static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
-    (void)buf;
-    (void)out;
-    return (pkt_err_t)-99;
+    if(!buf || !out) {
+        return PKT_ERR_NULL;
+    }
+    
+    char src[16] = {0};
+    int dst_port = 0;
+    int seq = 0;
+    char payload[256] = {0};
+
+    int consumed;
+    int matched = sscanf(buf, PKT_FMT_IN "%n", src, &dst_port, &seq, payload, &consumed);
+    if(matched != 4) {
+        return PKT_ERR_FORMAT;
+    }
+    size_t buf_len = strlen(buf);
+    if(buf_len > 0 && buf[buf_len - 1] == '\n') {
+        buf_len--; // Exclude the newline character from the length
+        if(buf_len > 0 && buf[buf_len - 1] == '\r') {
+            buf_len--; // Exclude the carriage return character from the length
+        }
+    }
+    if((size_t)consumed != buf_len) {
+        return PKT_ERR_TRAILING;
+    }
+
+    struct in_addr dst;
+    int result = inet_pton(AF_INET, src, &dst);
+    if(result != 1) {
+        return PKT_ERR_SRC;
+    }
+
+    if(dst_port < 1 || dst_port > 65535) {
+        return PKT_ERR_PORT;
+    }
+
+    if(seq < 0) {
+        return PKT_ERR_SEQ;
+    }
+
+    if(strchr(payload, '|')) {
+        return PKT_ERR_CHAR;
+    }
+
+
+    strcpy(out->src, src);
+    out->dst_port = dst_port;
+    out->seq = seq;
+    strcpy(out->payload, payload);
+
+    return PKT_OK;
 }
 
 #endif
