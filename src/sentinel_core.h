@@ -2,6 +2,8 @@
 #define SENTINEL_CORE_H
 
 #include <arpa/inet.h>
+#include <stdio.h>
+#include <string.h>
 #include "protocol.h"
 
 // parse_pkt error codes
@@ -29,12 +31,12 @@ static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
         return PKT_ERR_NULL;
     }
     
-    char src[16] = {0};
+    char src[SRC_IP_LEN] = {0};
     int dst_port = 0;
     int seq = 0;
-    char payload[256] = {0};
+    char payload[PAYLOAD_LEN] = {0};
 
-    int consumed;
+    int consumed = 0;
     int matched = sscanf(buf, PKT_FMT_IN "%n", src, &dst_port, &seq, payload, &consumed);
     if(matched != 4) {
         return PKT_ERR_FORMAT;
@@ -50,8 +52,8 @@ static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
         return PKT_ERR_TRAILING;
     }
 
-    struct in_addr dst;
-    int result = inet_pton(AF_INET, src, &dst);
+    struct in_addr addr;
+    int result = inet_pton(AF_INET, src, &addr);
     if(result != 1) {
         return PKT_ERR_SRC;
     }
