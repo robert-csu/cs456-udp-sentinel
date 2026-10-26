@@ -38,7 +38,7 @@ static int open_listener(int port) {
     return sock;
 }
 
-static void handle_datagram(const blacklist_t *bl, char *buf, ssize_t len, const char *from) {
+static void handle_datagram(const blacklist_t *bl, char *buf, ssize_t len, const char *ip, const char *from) {
     if(len > MAX_PKT_SIZE) {
         printf("dropped from %s: datagram larger than %d bytes\n", from, MAX_PKT_SIZE);
         return;
@@ -58,8 +58,13 @@ static void handle_datagram(const blacklist_t *bl, char *buf, ssize_t len, const
     }
 
 
-    const char *verdict = is_blacklisted(bl, pkt.src) != 0 ? "blocked" : "accepted";
-    printf("%s %s (dst_port %d, seq %d)\n", verdict, pkt.src, pkt.dst_port, pkt.seq);
+    // the blacklist is checked against the real sender address, not the src= field
+    const char *verdict = is_blacklisted(bl, ip) != 0 ? "blocked" : "accepted";
+    printf("%s %s (dst_port %d, seq %d)", verdict, from, pkt.dst_port, pkt.seq);
+    if(strcmp(pkt.src, ip) != 0) {
+        printf(" [claims src=%s]", pkt.src);
+    }
+    printf("\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -115,7 +120,7 @@ int main(int argc, char *argv[]) {
         char from[INET_ADDRSTRLEN + 8];
         inet_ntop(AF_INET, &sender.sin_addr, ip, sizeof ip);
         snprintf(from, sizeof from, "%s:%d", ip, ntohs(sender.sin_port));
-        handle_datagram(&bl, buf, len, from);
+        handle_datagram(&bl, buf, len, ip, from);
     }
 
     close(sock);

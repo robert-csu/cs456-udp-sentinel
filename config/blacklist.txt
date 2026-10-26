@@ -3,3 +3,6 @@
 10.0.0.66
 192.168.1.100
 203.0.113.7
+# loopback aliases the client can bind to (all of 127.0.0.0/8 is local on Linux)
+127.0.0.66
+127.0.0.67
