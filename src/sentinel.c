@@ -4,8 +4,19 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <signal.h>
+#include <pthread.h>
+#include <errno.h>
 #include "protocol.h"
 #include "sentinel_core.h"
+#include "heartbeat.h"
+
+static atomic_int stop_request = 0;
+
+static void on_signal(int sig) {
+    (void)sig;
+    atomic_store(&stop_request, 1);
+}
 
 static void usage(FILE *out) {
     fprintf(out, "usage: sentinel [--blacklist <path>] [--no-crash] [--help]\n");
@@ -106,12 +117,31 @@ int main(int argc, char *argv[]) {
     }
     printf("listening on %s:%d\n", HOST, PKT_PORT);
 
+    // heartbeat thread intialization
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = on_signal;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+    hb_args_t hb_args = {.port = HEARTBEAT_PORT, .stop = &stop_request, .sent = NULL};
+    pthread_t hb;
+    if(pthread_create(&hb, NULL, heartbeat_thread, &hb_args) != 0) {
+        fprintf(stderr, "failed to create heartbeat thread\n");
+        close(sock);
+        return 1;
+    }
+    printf("heartbeat -> %s:%d every %d ms\n", HOST, HEARTBEAT_PORT, T_MS);
+
     char buf[MAX_PKT_SIZE + 1];
-    for(;;) {
+    while(!atomic_load(&stop_request)) {
         struct sockaddr_in sender;
         socklen_t sender_len = sizeof sender;
         ssize_t len = recvfrom(sock, buf, sizeof buf, 0, (struct sockaddr *)&sender, &sender_len);
         if(len < 0) {
+            if(errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+                continue;
+            }
             perror("recvfrom");
             break;
         }
@@ -123,6 +153,8 @@ int main(int argc, char *argv[]) {
         handle_datagram(&bl, buf, len, ip, from);
     }
 
+    atomic_store(&stop_request, 1);
+    pthread_join(hb, NULL);
     close(sock);
     (void)no_crash;
     return 0;
