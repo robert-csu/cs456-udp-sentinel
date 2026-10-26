@@ -3,6 +3,7 @@
 
 #include <arpa/inet.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
 #include "protocol.h"
 
@@ -108,9 +109,85 @@ static inline int is_blacklisted(const blacklist_t *bl, const char *ip) {
 
 // text is the file contents; fills bl only on success
 static inline bl_err_t blacklist_parse(const char *text, blacklist_t *bl) {
-    (void)text;
-    (void)bl;
-    return (bl_err_t)-99;
+    if (text == NULL || bl == NULL){
+        return BL_ERR_NULL;
+    }
+
+    blacklist_t tmp;
+    memset(&tmp, 0, sizeof(blacklist_t));
+
+    const char *line = text;
+    while(*line != '\0') {
+        size_t line_len = strcspn(line, "\n");
+        char buf[64];
+        if (line_len >= sizeof(buf)) {
+            return BL_ERR_BAD_ENTRY;
+        }
+
+        memcpy(buf, line, line_len);
+        buf[line_len] = '\0';
+
+        int tail = (int)line_len - 1;
+        while (tail >= 0 && (buf[tail] == ' ' || buf[tail] == '\t' || buf[tail] == '\r')) {
+            buf[tail] = '\0';
+            tail--;
+        }
+
+        char *entry = buf;
+        while (*entry == ' ' || *entry == '\t') {
+            entry++;
+        }
+        if (*entry == '\0') {
+            line += line_len;
+            if (*line == '\n') line++;
+            continue;
+        }
+        if (*entry == '#') {
+            line += line_len;
+            if (*line == '\n') line++;
+            continue;
+        }
+
+        struct in_addr addr;
+        if (inet_pton(AF_INET, entry, &addr) != 1) {
+            return BL_ERR_BAD_ENTRY;
+        }
+
+        if (strlen(entry) >= SRC_IP_LEN) {
+            return BL_ERR_BAD_ENTRY;
+        }
+
+        bool is_duplicate = false;
+        for (int i = 0; i < tmp.count; i++) {
+            if (strcmp(tmp.ips[i], entry) == 0) {
+                is_duplicate = true;
+                break;
+            }
+        }
+
+        if (is_duplicate) {
+            line += line_len;
+            if (*line == '\n') line++;
+            continue;
+        }
+
+        if (tmp.count >= BL_MAX) {
+            return BL_ERR_FULL;
+        }
+
+        strncpy(tmp.ips[tmp.count], entry, SRC_IP_LEN - 1);
+        tmp.ips[tmp.count][SRC_IP_LEN - 1] = '\0';
+        tmp.count++;
+
+        line += line_len;
+        if (*line == '\n') {
+            line++;
+        }
+
+    }
+
+    memcpy(bl, &tmp, sizeof(blacklist_t));
+    return BL_OK;
 }
 
 // reads the file at path and passes its contents to blacklist_parse

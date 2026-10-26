@@ -301,43 +301,43 @@ static void test_blacklist_parse_special(void){
     memset(&untouched, 0xAA, sizeof untouched);
     result = blacklist_parse(NULL, &bl);
     if(result != BL_ERR_NULL) {
-        fprintf(stderr, "Test failed: BP2 text NULL: expected %d, got %d\n", BL_ERR_NULL, (int)result);
+        fprintf(stderr, "Test failed: text NULL: expected %d, got %d\n", BL_ERR_NULL, (int)result);
         failures++;
     }
     else{
-        printf("[PASS] BP2 text NULL\n");
+        printf("[PASS] text NULL\n");
     }
     if(memcmp(&bl, &untouched, sizeof bl) != 0) {
-        fprintf(stderr, "Test failed: BP2 text NULL: blacklist modified\n");
+        fprintf(stderr, "Test failed: text NULL: blacklist modified\n");
         failures++;
     }
 
     result = blacklist_parse("10.0.0.66\n", NULL);
     if(result != BL_ERR_NULL) {
-        fprintf(stderr, "Test failed: BP3 bl NULL: expected %d, got %d\n", BL_ERR_NULL, (int)result);
+        fprintf(stderr, "Test failed: bl NULL: expected %d, got %d\n", BL_ERR_NULL, (int)result);
         failures++;
     }
     else{
-        printf("[PASS] BP3 bl NULL\n");
+        printf("[PASS] bl NULL\n");
     }
 
     memset(&bl, 0, sizeof bl);
     build_ip_lines(text, sizeof text, BL_MAX);
     result = blacklist_parse(text, &bl);
     if(result != BL_OK) {
-        fprintf(stderr, "Test failed: BP6 exactly BL_MAX: expected %d, got %d\n", BL_OK, (int)result);
+        fprintf(stderr, "Test failed: exactly BL_MAX: expected %d, got %d\n", BL_OK, (int)result);
         failures++;
     }
     else if(bl.count != BL_MAX) {
-        fprintf(stderr, "Test failed: BP6 exactly BL_MAX: expected count %d, got %d\n", BL_MAX, bl.count);
+        fprintf(stderr, "Test failed: exactly BL_MAX: expected count %d, got %d\n", BL_MAX, bl.count);
         failures++;
     }
     else if(strcmp(bl.ips[BL_MAX - 1], "10.0.1.6") != 0) {
-        fprintf(stderr, "Test failed: BP6 exactly BL_MAX: last entry was '%s'\n", bl.ips[BL_MAX - 1]);
+        fprintf(stderr, "Test failed: exactly BL_MAX: last entry was '%s'\n", bl.ips[BL_MAX - 1]);
         failures++;
     }
     else{
-        printf("[PASS] BP6 exactly BL_MAX\n");
+        printf("[PASS] exactly BL_MAX\n");
     }
 
 
@@ -346,14 +346,14 @@ static void test_blacklist_parse_special(void){
     build_ip_lines(text, sizeof text, BL_MAX + 1);
     result = blacklist_parse(text, &bl);
     if(result != BL_ERR_FULL) {
-        fprintf(stderr, "Test failed: BP7 BL_MAX + 1: expected %d, got %d\n", BL_ERR_FULL, (int)result);
+        fprintf(stderr, "Test failed: BL_MAX + 1: expected %d, got %d\n", BL_ERR_FULL, (int)result);
         failures++;
     }
     else{
-        printf("[PASS] BP7 BL_MAX + 1\n");
+        printf("[PASS] BL_MAX + 1\n");
     }
     if(memcmp(&bl, &untouched, sizeof bl) != 0) {
-        fprintf(stderr, "Test failed: BP7 BL_MAX + 1: blacklist modified\n");
+        fprintf(stderr, "Test failed: BL_MAX + 1: blacklist modified\n");
         failures++;
     }
 }
