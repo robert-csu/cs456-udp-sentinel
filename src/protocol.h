@@ -25,5 +25,6 @@
 #define HB_FMT_IN "HEARTBEAT|pid=%d|seq=%d|ts=%lld"
 
 #define BL_MAX 256
+#define BL_FILE_MAX 65536
 
 #endif

@@ -1,3 +1,6 @@
+#define _POSIX_C_SOURCE 200809L
+#include <unistd.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -386,11 +389,255 @@ static void test_blacklist_parse_special(void){
     }
 }
 
+typedef struct{
+    const char *name;
+    const char *content;
+    int output_code;
+    int expected_count;
+    const char *first_ip;
+} test_blacklist_load_t;
+
+static const test_blacklist_load_t test_blacklist_load_inputs[] = {
+    {.name = "valid_file", .content = "10.0.0.66\n192.168.1.100\n", .output_code = BL_OK, .expected_count = 2, .first_ip = "10.0.0.66"},
+    {.name = "empty_file", .content = "", .output_code = BL_OK, .expected_count = 0, .first_ip = NULL},
+    {.name = "no_final_newline", .content = "10.0.0.66", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"},
+    {.name = "crlf_file", .content = "10.0.0.66\r\n192.168.1.100\r\n", .output_code = BL_OK, .expected_count = 2, .first_ip = "10.0.0.66"},
+    {.name = "comments_only", .content = "# nothing here\n", .output_code = BL_OK, .expected_count = 0, .first_ip = NULL},
+    {.name = "bad_entry_in_file", .content = "10.0.0.66\nbogus\n", .output_code = BL_ERR_BAD_ENTRY, .expected_count = 0, .first_ip = NULL},
+    {.name = "long_comment_in_file", .content = "# aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n10.0.0.66\n", .output_code = BL_OK, .expected_count = 1, .first_ip = "10.0.0.66"}
+};
+
+static int write_temp_file(const char *content, size_t len, char *path_out){
+    snprintf(path_out, 64, "%s", "/tmp/blacklist_test_XXXXXX"); // fixed size from char path[64]
+    int fd = mkstemp(path_out);
+    if(fd < 0){
+        return -1;
+    }
+    ssize_t ret = write(fd, content, len);
+    if(ret < 0 || (size_t)ret != len){
+        close(fd);
+        unlink(path_out);
+        return -1;
+    }
+    close(fd);
+    return 0;
+}
+
+static void test_blacklist_load_table(void){
+    size_t num_tests = sizeof(test_blacklist_load_inputs) / sizeof(test_blacklist_load_inputs[0]);
+    for(size_t i = 0; i < num_tests; i++){
+        const test_blacklist_load_t tmp = test_blacklist_load_inputs[i];
+        char path[64];
+        blacklist_t blk;
+        blacklist_t untouched;
+        int setup_rc = write_temp_file(tmp.content, strlen(tmp.content), path);
+        if(setup_rc != 0){
+            fprintf(stderr, "Test failed for input '%s': unable to write temporary file\n", tmp.name);
+            failures++;
+            continue;
+        }
+
+        memset(&blk, 0xAA, sizeof blk);
+        memset(&untouched, 0xAA, sizeof untouched);
+        bl_err_t actual = blacklist_load(path, &blk);
+        if(actual != tmp.output_code){
+            fprintf(stderr, "Test failed for input '%s': expected %d, got %d\n", tmp.name, tmp.output_code, (int)actual);
+            failures++;
+        }
+        else{
+            printf("[PASS] '%s'\n", tmp.name);
+            if(actual == BL_OK) {
+                if(blk.count != tmp.expected_count) {
+                    fprintf(stderr, "Test failed for input '%s': expected count %d, got %d\n", tmp.name, tmp.expected_count, blk.count);
+                    failures++;
+                }
+                else if(tmp.first_ip && strcmp(blk.ips[0], tmp.first_ip) != 0) {
+                    fprintf(stderr, "Test failed for input '%s': expected first ip '%s', got '%s'\n", tmp.name, tmp.first_ip, blk.ips[0]);
+                    failures++;
+                }
+            }
+        }
+        if(tmp.output_code != BL_OK && memcmp(&blk, &untouched, sizeof blk) != 0) {
+            fprintf(stderr, "Test failed for input '%s': blacklist modified on failure\n", tmp.name);
+            failures++;
+        }
+        unlink(path);
+    }
+}
+
+static void test_blacklist_load_special(void){
+    static char big[BL_FILE_MAX + 2];
+    const char valid_line[] = "10.0.0.66\n";
+    const char nul_content[] = "10.0.0.66\n\0" "1.2.3.4\n";
+    char path[64];
+    blacklist_t bl;
+    blacklist_t untouched;
+    bl_err_t result;
+
+    memset(&bl, 0xAA, sizeof bl);
+    memset(&untouched, 0xAA, sizeof untouched);
+    result = blacklist_load(NULL, &bl);
+    if(result != BL_ERR_NULL) {
+        fprintf(stderr, "Test failed: path NULL: expected %d, got %d\n", BL_ERR_NULL, (int)result);
+        failures++;
+    }
+    else{
+        printf("[PASS] path NULL\n");
+    }
+    if(memcmp(&bl, &untouched, sizeof bl) != 0) {
+        fprintf(stderr, "Test failed: path NULL: blacklist modified\n");
+        failures++;
+    }
+
+    if(write_temp_file(valid_line, strlen(valid_line), path) != 0) {
+        fprintf(stderr, "Test failed: bl NULL: unable to write temporary file\n");
+        failures++;
+    }
+    else{
+        result = blacklist_load(path, NULL);
+        if(result != BL_ERR_NULL) {
+            fprintf(stderr, "Test failed: bl NULL: expected %d, got %d\n", BL_ERR_NULL, (int)result);
+            failures++;
+        }
+        else{
+            printf("[PASS] bl NULL\n");
+        }
+        unlink(path);
+    }
+
+    memset(&bl, 0xAA, sizeof bl);
+    result = blacklist_load("/nonexistent/blacklist.txt", &bl);
+    if(result != BL_ERR_IO) {
+        fprintf(stderr, "Test failed: missing file: expected %d, got %d\n", BL_ERR_IO, (int)result);
+        failures++;
+    }
+    else{
+        printf("[PASS] missing file\n");
+    }
+    if(memcmp(&bl, &untouched, sizeof bl) != 0) {
+        fprintf(stderr, "Test failed: missing file: blacklist modified\n");
+        failures++;
+    }
+
+    memset(&bl, 0xAA, sizeof bl);
+    result = blacklist_load("/tmp", &bl);
+    if(result != BL_ERR_IO) {
+        fprintf(stderr, "Test failed: directory: expected %d, got %d\n", BL_ERR_IO, (int)result);
+        failures++;
+    }
+    else{
+        printf("[PASS] directory\n");
+    }
+    if(memcmp(&bl, &untouched, sizeof bl) != 0) {
+        fprintf(stderr, "Test failed: directory: blacklist modified\n");
+        failures++;
+    }
+
+    memset(&bl, 0xAA, sizeof bl);
+    if(write_temp_file(nul_content, sizeof nul_content - 1, path) != 0) {
+        fprintf(stderr, "Test failed: NUL byte: unable to write temporary file\n");
+        failures++;
+    }
+    else{
+        result = blacklist_load(path, &bl);
+        if(result != BL_ERR_BAD_ENTRY) {
+            fprintf(stderr, "Test failed: NUL byte: expected %d, got %d\n", BL_ERR_BAD_ENTRY, (int)result);
+            failures++;
+        }
+        else{
+            printf("[PASS] NUL byte\n");
+        }
+        if(memcmp(&bl, &untouched, sizeof bl) != 0) {
+            fprintf(stderr, "Test failed: NUL byte: blacklist modified\n");
+            failures++;
+        }
+        unlink(path);
+    }
+
+    memset(&bl, 0xAA, sizeof bl);
+    memset(big, 'a', BL_FILE_MAX);
+    big[0] = '#';
+    big[1] = ' ';
+    big[BL_FILE_MAX - 1] = '\n';
+    if(write_temp_file(big, BL_FILE_MAX, path) != 0) {
+        fprintf(stderr, "Test failed: exactly BL_FILE_MAX: unable to write temporary file\n");
+        failures++;
+    }
+    else{
+        result = blacklist_load(path, &bl);
+        if(result != BL_OK) {
+            fprintf(stderr, "Test failed: exactly BL_FILE_MAX: expected %d, got %d\n", BL_OK, (int)result);
+            failures++;
+        }
+        else if(bl.count != 0) {
+            fprintf(stderr, "Test failed: exactly BL_FILE_MAX: expected count 0, got %d\n", bl.count);
+            failures++;
+        }
+        else{
+            printf("[PASS] exactly BL_FILE_MAX\n");
+        }
+        unlink(path);
+    }
+
+    memset(&bl, 0xAA, sizeof bl);
+    memset(big, 'a', BL_FILE_MAX + 1);
+    big[0] = '#';
+    big[1] = ' ';
+    big[BL_FILE_MAX] = '\n';
+    if(write_temp_file(big, BL_FILE_MAX + 1, path) != 0) {
+        fprintf(stderr, "Test failed: BL_FILE_MAX + 1: unable to write temporary file\n");
+        failures++;
+    }
+    else{
+        result = blacklist_load(path, &bl);
+        if(result != BL_ERR_IO) {
+            fprintf(stderr, "Test failed: BL_FILE_MAX + 1: expected %d, got %d\n", BL_ERR_IO, (int)result);
+            failures++;
+        }
+        else{
+            printf("[PASS] BL_FILE_MAX + 1\n");
+        }
+        if(memcmp(&bl, &untouched, sizeof bl) != 0) {
+            fprintf(stderr, "Test failed: BL_FILE_MAX + 1: blacklist modified\n");
+            failures++;
+        }
+        unlink(path);
+    }
+
+    if(geteuid() == 0) {
+        printf("[SKIP] unreadable file (running as root)\n");
+    }
+    else if(write_temp_file(valid_line, strlen(valid_line), path) != 0) {
+        fprintf(stderr, "Test failed: unreadable file: unable to write temporary file\n");
+        failures++;
+    }
+    else{
+        memset(&bl, 0xAA, sizeof bl);
+        chmod(path, 0);
+        result = blacklist_load(path, &bl);
+        if(result != BL_ERR_IO) {
+            fprintf(stderr, "Test failed: unreadable file: expected %d, got %d\n", BL_ERR_IO, (int)result);
+            failures++;
+        }
+        else{
+            printf("[PASS] unreadable file\n");
+        }
+        if(memcmp(&bl, &untouched, sizeof bl) != 0) {
+            fprintf(stderr, "Test failed: unreadable file: blacklist modified\n");
+            failures++;
+        }
+        chmod(path, 0600);
+        unlink(path);
+    }
+}
+
 int main(void)
 {
     test_packet_inputs();
     test_long_payloads();
     test_null_pointers();
+    test_blacklist_load_table();
+    test_blacklist_load_special();
     test_is_blacklisted_table();
     test_is_blacklisted_special();
     test_blacklist_parse_table();
