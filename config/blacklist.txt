@@ -1,0 +1,5 @@
+# Source addresses the sentinel must block.
+# One IPv4 address per line. Blank lines and lines starting with # are ignored.
+10.0.0.66
+192.168.1.100
+203.0.113.7
