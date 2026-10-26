@@ -24,6 +24,17 @@ static long long mono_ms(void)
     return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
+// Children that are expected to crash trap SIGABRT and leave with this code. The abort() still happens and
+// still raises SIGABRT, but the OS crash handler (apport, systemd-coredump, WSL) never runs, so the timing
+// the tests measure is the fault thread's and not the handler's.
+#define CRASH_EXIT 99
+
+static void on_abort(int sig)
+{
+    (void)sig;
+    _exit(CRASH_EXIT);
+}
+
 
 static void test_crashes_within_window(void)
 {
@@ -34,6 +45,7 @@ static void test_crashes_within_window(void)
         return;
     }
     if(pid == 0) {
+        signal(SIGABRT, on_abort);
         atomic_int stop = 0;
         fault_args_t args = {.min_ms = 100, .max_ms = 200, .pct = 100, .seed = 42, .stop = &stop};
         pthread_t tid;
@@ -47,8 +59,7 @@ static void test_crashes_within_window(void)
     waitpid(pid, &status, 0);
     long long elapsed = mono_ms() - start;
 
-    CHECK(WIFSIGNALED(status), "Child did not exit due to a signal");
-    CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT, "Child did not abort");
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == CRASH_EXIT, "Child did not abort (SIGABRT was not raised)");
     CHECK(elapsed >= 100 && elapsed <= 200 + 500, "Child did not abort within the expected time window");
 }
 
@@ -81,8 +92,8 @@ static void test_never_crashes_at_zero_percent(void)
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0, "Child did not exit cleanly (exit code 3 means the thread stopped rolling)");
 }
 
-// forks a child running the fault thread with pct = 100 and returns the ms until it died from a signal,
-// or -1 if the child did not crash (or fork failed), so a thread that never crashes cannot "agree" with itself
+// forks a child running the fault thread with pct = 100 and returns the ms until it aborted,
+// or -1 if the child did not abort (or fork failed), so a thread that never crashes cannot "agree" with itself
 static long long crash_time_ms(unsigned seed)
 {
     long long start = mono_ms();
@@ -91,6 +102,7 @@ static long long crash_time_ms(unsigned seed)
         return -1;
     }
     if(pid == 0) {
+        signal(SIGABRT, on_abort);
         atomic_int stop = 0;
         fault_args_t args = {.min_ms = 100, .max_ms = 600, .pct = 100, .seed = seed, .stop = &stop};
         pthread_t tid;
@@ -103,7 +115,7 @@ static long long crash_time_ms(unsigned seed)
     int status = 0;
     waitpid(pid, &status, 0);
     long long elapsed = mono_ms() - start;
-    return WIFSIGNALED(status) ? elapsed : -1;
+    return WIFEXITED(status) && WEXITSTATUS(status) == CRASH_EXIT ? elapsed : -1;
 }
 
 // tests that the same seed produces the same crash time
