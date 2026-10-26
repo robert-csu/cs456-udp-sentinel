@@ -7,9 +7,12 @@
 #include <signal.h>
 #include <pthread.h>
 #include <errno.h>
+#include <limits.h>
+
 #include "protocol.h"
 #include "sentinel_core.h"
 #include "heartbeat.h"
+#include "fault.h"
 
 static atomic_int stop_request = 0;
 
@@ -19,7 +22,8 @@ static void on_signal(int sig) {
 }
 
 static void usage(FILE *out) {
-    fprintf(out, "usage: sentinel [--blacklist <path>] [--no-crash] [--help]\n");
+    fprintf(out, "usage: sentinel [--blacklist <path>] [--no-crash] [--seed <n>]\n"
+            "                [--crash-min-ms <n>] [--crash-max-ms <n>] [--help]\n");
 }
 
 static int fill_addr(struct sockaddr_in *addr, int port) {
@@ -27,6 +31,20 @@ static int fill_addr(struct sockaddr_in *addr, int port) {
     addr->sin_family = AF_INET;
     addr->sin_port = htons(port);
     return inet_pton(AF_INET, HOST, &addr->sin_addr) == 1 ? 0 : -1;
+}
+
+static int parse_uint(const char *s, unsigned long max, unsigned *out) {
+    if(!s || *s == '\0' || *s == '-') {
+        return -1;
+    }
+    char *end;
+    errno = 0;
+    unsigned long val = strtoul(s, &end, 10);
+    if(errno != 0 || val > max || *end != '\0') {
+        return -1;
+    }
+    *out = (unsigned)val;
+    return 0;
 }
 
 static int open_listener(int port) {
@@ -82,8 +100,14 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
 
     const char *blacklist_path = "config/blacklist.txt";
-    int no_crash = 0;
 
+    int no_crash = 0;
+    int crash_min_ms = 5000; // 5 seconds
+    int crash_max_ms = 20000; // 20 seconds
+    int crash_pct = 100;
+    unsigned seed = (unsigned)time(NULL) ^ (unsigned)getpid();
+
+    // parse command-line options
     for(int i = 1; i < argc; i++) {
         if(strcmp(argv[i], "--no-crash") == 0) {
             no_crash = 1;
@@ -96,6 +120,27 @@ int main(int argc, char *argv[]) {
         } else if(strcmp(argv[i], "--help") == 0) {
             usage(stdout);
             return 0;
+        } else if(strcmp(argv[i], "--crash-min-ms") == 0) {
+            unsigned v;
+            if(++i >= argc || parse_uint(argv[i], INT_MAX, &v) != 0) {
+                fprintf(stderr, "--crash-min-ms needs a non-negative number\n");
+                return 2;
+            }
+            crash_min_ms = (int)v;
+        } else if(strcmp(argv[i], "--crash-max-ms") == 0) {
+            unsigned v;
+            if(++i >= argc || parse_uint(argv[i], INT_MAX, &v) != 0) {
+                fprintf(stderr, "--crash-max-ms needs a non-negative number\n");
+                return 2;
+            }
+            crash_max_ms = (int)v;
+        } else if(strcmp(argv[i], "--seed") == 0) {
+            unsigned v;
+            if(++i >= argc || parse_uint(argv[i], UINT_MAX, &v) != 0) {
+                fprintf(stderr, "--seed needs a non-negative number\n");
+                return 2;
+            }
+            seed = v;
         } else {
             fprintf(stderr, "unknown option: %s\n", argv[i]);
             usage(stderr);
@@ -103,6 +148,12 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    if(crash_min_ms > crash_max_ms) {
+        fprintf(stderr, "--crash-min-ms (%d) must not exceed --crash-max-ms (%d)\n", crash_min_ms, crash_max_ms);
+        return 2;
+    }
+
+    // load blacklist before socket
     blacklist_t bl;
     bl_err_t err = blacklist_load(blacklist_path, &bl);
     if(err != BL_OK) {
@@ -133,6 +184,23 @@ int main(int argc, char *argv[]) {
     }
     printf("heartbeat -> %s:%d every %d ms\n", HOST, HEARTBEAT_PORT, T_MS);
 
+    // initialize fault thread
+    fault_args_t fault_args = {.min_ms = crash_min_ms, .max_ms = crash_max_ms, .pct = crash_pct, .seed = seed, .stop = &stop_request, .rolls = NULL};
+    pthread_t fault;
+    int fault_started = 0;
+    if(!no_crash) {
+        if(pthread_create(&fault, NULL, fault_thread, &fault_args) != 0) {
+            fprintf(stderr, "failed to create fault thread\n");
+            atomic_store(&stop_request, 1);   // tell the heartbeat thread to stop
+            pthread_join(hb, NULL);
+            close(sock);
+            return 1;
+        }
+        fault_started = 1;
+        printf("crash injection on: seed %u, between %d and %d ms\n", seed, crash_min_ms, crash_max_ms);
+    }
+
+    // receive and handle datagrams
     char buf[MAX_PKT_SIZE + 1];
     while(!atomic_load(&stop_request)) {
         struct sockaddr_in sender;
@@ -153,7 +221,11 @@ int main(int argc, char *argv[]) {
         handle_datagram(&bl, buf, len, ip, from);
     }
 
+    // closes everything
     atomic_store(&stop_request, 1);
+    if(fault_started) {
+        pthread_join(fault, NULL);
+    }
     pthread_join(hb, NULL);
     close(sock);
     (void)no_crash;
