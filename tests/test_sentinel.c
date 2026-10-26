@@ -744,6 +744,234 @@ static void test_format_heartbeat_special(void){
     }
 }
 
+static void test_fault_next_sleep_ms(void){
+    unsigned seed;
+    unsigned seed_b;
+    unsigned before;
+    int result;
+    int other;
+    int seen[3];
+    int bad;
+
+    seed = 42;
+    bad = 0;
+    for(int i = 0; i < 1000; i++) {
+        result = fault_next_sleep_ms(&seed, 2000, 8000);
+        if(result < 2000 || result > 8000) {
+            fprintf(stderr, "Test failed: sleep in range: draw %d returned %d\n", i, result);
+            bad = 1;
+            break;
+        }
+    }
+    if(bad) {
+        failures++;
+    }
+    else{
+        printf("[PASS] sleep in range\n");
+    }
+
+    seed = 42;
+    seed_b = 42;
+    bad = 0;
+    for(int i = 0; i < 100; i++) {
+        result = fault_next_sleep_ms(&seed, 0, 1000);
+        other = fault_next_sleep_ms(&seed_b, 0, 1000);
+        if(result < 0 || result != other) {
+            fprintf(stderr, "Test failed: sleep deterministic: draw %d gave %d and %d\n", i, result, other);
+            bad = 1;
+            break;
+        }
+    }
+    if(bad) {
+        failures++;
+    }
+    else{
+        printf("[PASS] sleep deterministic\n");
+    }
+
+    seed = 42;
+    bad = 0;
+    for(int i = 0; i < 100; i++) {
+        result = fault_next_sleep_ms(&seed, 500, 500);
+        if(result != 500) {
+            fprintf(stderr, "Test failed: sleep lo equals hi: draw %d returned %d, expected 500\n", i, result);
+            bad = 1;
+            break;
+        }
+    }
+    if(bad) {
+        failures++;
+    }
+    else{
+        printf("[PASS] sleep lo equals hi\n");
+    }
+
+    seed = 42;
+    seen[0] = 0;
+    seen[1] = 0;
+    seen[2] = 0;
+    for(int i = 0; i < 2000; i++) {
+        result = fault_next_sleep_ms(&seed, 0, 2);
+        if(result >= 0 && result <= 2) {
+            seen[result] = 1;
+        }
+    }
+    if(!seen[0] || !seen[1] || !seen[2]) {
+        fprintf(stderr, "Test failed: sleep reaches whole range: saw 0=%d 1=%d 2=%d\n", seen[0], seen[1], seen[2]);
+        failures++;
+    }
+    else{
+        printf("[PASS] sleep reaches whole range\n");
+    }
+
+    seed = 42;
+    before = seed;
+    fault_next_sleep_ms(&seed, 0, 1000);
+    if(seed == before) {
+        fprintf(stderr, "Test failed: sleep seed advances: seed is still %u\n", seed);
+        failures++;
+    }
+    else{
+        printf("[PASS] sleep seed advances\n");
+    }
+
+    result = fault_next_sleep_ms(NULL, 0, 10);
+    if(result != -1) {
+        fprintf(stderr, "Test failed: sleep seed NULL: expected -1, got %d\n", result);
+        failures++;
+    }
+    else{
+        printf("[PASS] sleep seed NULL\n");
+    }
+
+    seed = 42;
+    result = fault_next_sleep_ms(&seed, -1, 10);
+    if(result != -1) {
+        fprintf(stderr, "Test failed: sleep lo negative: expected -1, got %d\n", result);
+        failures++;
+    }
+    else{
+        printf("[PASS] sleep lo negative\n");
+    }
+
+    seed = 42;
+    result = fault_next_sleep_ms(&seed, 10, 5);
+    if(result != -1) {
+        fprintf(stderr, "Test failed: sleep lo greater than hi: expected -1, got %d\n", result);
+        failures++;
+    }
+    else{
+        printf("[PASS] sleep lo greater than hi\n");
+    }
+}
+
+static void test_fault_should_crash(void){
+    unsigned seed;
+    unsigned seed_b;
+    int result;
+    int other;
+    int crashes;
+    int bad;
+
+    seed = 42;
+    bad = 0;
+    for(int i = 0; i < 10000; i++) {
+        result = fault_should_crash(&seed, 0);
+        if(result != 0) {
+            fprintf(stderr, "Test failed: crash 0 percent: draw %d returned %d\n", i, result);
+            bad = 1;
+            break;
+        }
+    }
+    if(bad) {
+        failures++;
+    }
+    else{
+        printf("[PASS] crash 0 percent\n");
+    }
+
+    seed = 42;
+    bad = 0;
+    for(int i = 0; i < 10000; i++) {
+        result = fault_should_crash(&seed, 100);
+        if(result != 1) {
+            fprintf(stderr, "Test failed: crash 100 percent: draw %d returned %d\n", i, result);
+            bad = 1;
+            break;
+        }
+    }
+    if(bad) {
+        failures++;
+    }
+    else{
+        printf("[PASS] crash 100 percent\n");
+    }
+
+    seed = 42;
+    crashes = 0;
+    for(int i = 0; i < 10000; i++) {
+        if(fault_should_crash(&seed, 30) == 1) {
+            crashes++;
+        }
+    }
+    if(crashes < 2700 || crashes > 3300) {
+        fprintf(stderr, "Test failed: crash 30 percent: %d of 10000 crashed, expected 2700 to 3300\n", crashes);
+        failures++;
+    }
+    else{
+        printf("[PASS] crash 30 percent\n");
+    }
+
+
+    seed = 42;
+    seed_b = 42;
+    bad = 0;
+    for(int i = 0; i < 100; i++) {
+        result = fault_should_crash(&seed, 50);
+        other = fault_should_crash(&seed_b, 50);
+        if((result != 0 && result != 1) || result != other) {
+            fprintf(stderr, "Test failed: crash deterministic: draw %d gave %d and %d\n", i, result, other);
+            bad = 1;
+            break;
+        }
+    }
+    if(bad) {
+        failures++;
+    }
+    else{
+        printf("[PASS] crash deterministic\n");
+    }
+
+    result = fault_should_crash(NULL, 50);
+    if(result != -1) {
+        fprintf(stderr, "Test failed: crash seed NULL: expected -1, got %d\n", result);
+        failures++;
+    }
+    else{
+        printf("[PASS] crash seed NULL\n");
+    }
+
+    seed = 42;
+    result = fault_should_crash(&seed, -1);
+    if(result != -1) {
+        fprintf(stderr, "Test failed: crash pct negative: expected -1, got %d\n", result);
+        failures++;
+    }
+    else{
+        printf("[PASS] crash pct negative\n");
+    }
+
+    seed = 42;
+    result = fault_should_crash(&seed, 101);
+    if(result != -1) {
+        fprintf(stderr, "Test failed: crash pct above 100: expected -1, got %d\n", result);
+        failures++;
+    }
+    else{
+        printf("[PASS] crash pct above 100\n");
+    }
+}
+
 int main(void)
 {
     test_packet_inputs();
@@ -757,6 +985,8 @@ int main(void)
     test_blacklist_parse_special();
     test_format_heartbeat();
     test_format_heartbeat_special();
+    test_fault_next_sleep_ms();
+    test_fault_should_crash();
 
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);

@@ -275,4 +275,19 @@ static inline int format_heartbeat(char *buf, size_t n, int pid, int seq, long l
     return written;
 }
 
+// returns a random sleep time in [lo, hi] ms, or -1 if seed is NULL, lo < 0 or lo > hi
+static inline int fault_next_sleep_ms(unsigned *seed, int lo, int hi) {
+    (void)seed;
+    (void)lo;
+    (void)hi;
+    return -99;
+}
+
+// returns 1 to crash, 0 to keep running, or -1 if seed is NULL or pct is outside 0..100
+static inline int fault_should_crash(unsigned *seed, int pct) {
+    (void)seed;
+    (void)pct;
+    return -99;
+}
+
 #endif
