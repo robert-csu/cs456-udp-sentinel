@@ -104,6 +104,8 @@ static void test_sends_periodic_heartbeats(void)
         CHECK(ts[i] > 0, "heartbeat ts must be positive");
     }
 
+    CHECK(got < 1 || seq[0] == 0, "first heartbeat seq must be 0");
+
     for(int i = 1; i < got; i++) {
         CHECK(seq[i] == seq[i - 1] + 1, "seq did not increase by exactly 1");
         CHECK(ts[i] >= ts[i - 1], "ts went backwards");
@@ -180,6 +182,7 @@ static void test_survives_no_listener(void)
 
 int main(void)
 {
+    alarm(30); // a hung thread kills the test instead of blocking forever
     test_sends_periodic_heartbeats();
     test_stops_on_request();
     test_survives_no_listener();
