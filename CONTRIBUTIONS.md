@@ -1,7 +1,7 @@
 # Contributions
 
 ## Dacovney Brochu
--Client and Documentation: 
+- Client and Documentation: 
     Implemented the UDP client in C to send test packets to Sentinel using the shared protocol format, including sequential packet numbers, timed packet transmission, and error handling. Tested client functionality by verifying that Sentinel successfully received and accepted all ten packets. Wrote the Adversarial Audit Summary documenting the baseline heartbeat vulnerability to spoofing and explaining how the attack script attempts to exploit unauthenticated heartbeat messages.
 
 ## Robert O'Neil
