@@ -11,3 +11,5 @@
 ## Sam Berman
 
 ## Tyler Orwa
+- Attacker:
+    Implemented the heartbeat spoofer and replay attack using Python. The heartbeat spoofer uses forged datagrams sent to the monitor to relay an alive sentinel. The replay attack uses a sniffed heartbeat to replay at the same interval to the monitor to relay an alive sentinel.  Tested functionality of both in sending heartbeats and interacting with the sentinel during runtime. Wrote the '*Service Overview*' and the attacker portion of the '*Execution & Setup Instructions*'
