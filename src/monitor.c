@@ -80,7 +80,7 @@ int main(void)
     printf("Monitor listening on %s:%d\n",
            HOST, HEARTBEAT_PORT);
     printf("Heartbeat interval: %d ms\n", T_MS);
-    printf("Failure timeout: %d ms\n", TIMEOUT_MS);
+    printf("Failure timeout: %d ms\n", TIMEOUT_VAL);
 
     /* last_heartbeat - time of last valid heartbeat
        received_first - heartbeat arrived flag 
@@ -165,7 +165,7 @@ int main(void)
             long long elapsed = now_ms() - last_heartbeat;
 
             /* error log failure w timestamp */
-            if (elapsed >= TIMEOUT_MS) {
+            if (elapsed >= TIMEOUT_VAL) {
                 printf("\nALERT: Sentinel is OFFLINE!\n");
                 printf("No heartbeat for %lld ms\n\n",
                        elapsed);
