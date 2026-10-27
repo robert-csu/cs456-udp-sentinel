@@ -2,3 +2,4 @@ build/
 bin/
 !logs/.gitkeep
 *.o
+beat.bin
