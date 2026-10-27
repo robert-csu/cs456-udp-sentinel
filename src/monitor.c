@@ -176,7 +176,7 @@ int main(void)
                         now_ms(), ctime(&current));
                 fflush(log);
 
-                service_offline = 1;
+                is_offline = 1;
             }
         }
     }
