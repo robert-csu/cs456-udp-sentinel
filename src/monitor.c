@@ -161,7 +161,7 @@ int main(void)
         }
 
         /* did heartbeat expired?  */
-        if (received_first && !service_offline) {
+        if (received_first && !is_offline) {
             long long elapsed = now_ms() - last_heartbeat;
 
             /* error log failure w timestamp */
