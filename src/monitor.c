@@ -139,7 +139,7 @@ int main(void)
                        pid, seq);
             
             /* if heartbeat was offline - note restoration */
-                if (service_offline) {
+                if (is_offline) {
                     printf("Service heartbeat restored!\n");
 
                     time_t current = time(NULL);
@@ -147,7 +147,7 @@ int main(void)
                             now_ms(), ctime(&current));
                     fflush(log);
 
-                    service_offline = 0;
+                    is_offline = 0;
                 }
             }
         }
@@ -161,7 +161,7 @@ int main(void)
         }
 
         /* did heartbeat expired?  */
-        if (received_first && !service_offline) {
+        if (received_first && !is_offline) {
             long long elapsed = now_ms() - last_heartbeat;
 
             /* error log failure w timestamp */
@@ -176,7 +176,7 @@ int main(void)
                         now_ms(), ctime(&current));
                 fflush(log);
 
-                service_offline = 1;
+                is_offline = 1;
             }
         }
     }
