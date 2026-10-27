@@ -139,7 +139,7 @@ int main(void)
                        pid, seq);
             
             /* if heartbeat was offline - note restoration */
-                if (service_offline) {
+                if (is_offline) {
                     printf("Service heartbeat restored!\n");
 
                     time_t current = time(NULL);
@@ -147,7 +147,7 @@ int main(void)
                             now_ms(), ctime(&current));
                     fflush(log);
 
-                    service_offline = 0;
+                    is_offline = 0;
                 }
             }
         }
