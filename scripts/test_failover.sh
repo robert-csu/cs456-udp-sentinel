@@ -1,15 +1,3 @@
-#!/usr/bin/env bash
-# test_failover.sh - end-to-end tests for the sentinel's Part 2 behaviour (run from anywhere):
-#   2. BLOCK / UNBLOCK / QUERY
-#   3. flooding one IP auto-bans it
-#   4. kill -9 the primary, start --standby, QUERY answers are identical and [Service Restored] is logged
-#   5. flipped bytes in checkpoint.dat: the standby rejects it, falls back to checkpoint.prev and survives
-#   6. truncated checkpoint.dat: same as 5
-#   7. oversized and malformed PKT/BLOCK/UNBLOCK/QUERY are rejected without crashing the sentinel
-#
-# Every sentinel runs in its own temporary working directory, so the real state/ directory is never
-# touched. Crash injection is disabled (--no-crash) so each test controls exactly when the primary dies.
-# Needs python3 and the built bin/sentinel. Uses UDP port PKT_PORT, which must be free.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SENTINEL="$ROOT/bin/sentinel"
