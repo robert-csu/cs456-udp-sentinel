@@ -20,9 +20,18 @@
 #define PKT_FMT_IN "PKT|src=%15[^|]|dst_port=%d|seq=%d|payload=%255s"
 
 // sentinel -> monitor (UDP HEARTBEAT_PORT)
-// HEARTBEAT|pid=<n>|seq=<n>|ts=<ms>
-#define HB_FMT_OUT "HEARTBEAT|pid=%d|seq=%d|ts=%lld"
-#define HB_FMT_IN "HEARTBEAT|pid=%d|seq=%d|ts=%lld"
+// HEARTBEAT|pid=<n>|epoch=<n>|seq=<n>|ts=<ms>
+#define HB_FMT_OUT "HEARTBEAT|pid=%d|epoch=%d|seq=%d|ts=%lld"
+#define HB_FMT_IN "HEARTBEAT|pid=%d|epoch=%d|seq=%d|ts=%lld"
+
+#define BL_FMT_OUT "BLOCK|ip=%s"
+#define BL_FMT_IN "BLOCK|ip=%15[^|]"
+
+#define UNBL_FMT_OUT "UNBLOCK|ip=%s"
+#define UNBL_FMT_IN "UNBLOCK|ip=%15[^|]"
+
+#define QUERY_FMT_OUT "QUERY|ip=%s"
+#define QUERY_FMT_IN "QUERY|ip=%15[^|]"
 
 #define BL_MAX 256
 #define BL_FILE_MAX 65536

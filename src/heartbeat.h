@@ -13,6 +13,7 @@
 
 typedef struct {
     int port;
+    int epoch; // sent in every heartbeat so the monitor can recognise a new primary
     atomic_int *stop;
     atomic_int *sent;
 } hb_args_t;
@@ -44,7 +45,7 @@ static inline void *heartbeat_thread(void *arg) {
 
     for(int seq = 0; !atomic_load(args.stop); seq++) {
         char buf[128];
-        int n = snprintf(buf, sizeof(buf), HB_FMT_OUT, pid, seq, hb_now_ms());
+        int n = snprintf(buf, sizeof(buf), HB_FMT_OUT, pid, args.epoch, seq, hb_now_ms());
         if(sendto(sock, buf, n, 0, (struct sockaddr *)&addr, sizeof addr) < 0) {
             // a missing monitor must not stop the sentinel, keep beating
         }

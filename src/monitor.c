@@ -110,6 +110,7 @@ int main(void)
 
             /* parse expected heartbeat format */
             int pid;
+            int epoch;
             int seq;
             long long timestamp;
             int consumed = 0;
@@ -119,24 +120,26 @@ int main(void)
                 buf,
                 HB_FMT_IN "%n",
                 &pid,
+                &epoch,
                 &seq,
                 &timestamp,
                 &consumed
             );
 
-        /* need all three fields present & valid */
-            if (matched == 3 &&
+        /* need all four fields present & valid */
+            if (matched == 4 &&
                 consumed == len &&
                 pid > 0 &&
+                epoch >= 0 &&
                 seq >= 0 &&
                 timestamp >= 0) {
-        
+
             /* record this heartbeat time */
                 last_heartbeat = now_ms();
                 received_first = 1;
 
-                printf("Heartbeat received: PID=%d SEQ=%d\n",
-                       pid, seq);
+                printf("Heartbeat received: PID=%d EPOCH=%d SEQ=%d\n",
+                       pid, epoch, seq);
             
             /* if heartbeat was offline - note restoration */
                 if (is_offline) {
