@@ -4,6 +4,8 @@
 #include <arpa/inet.h>
 #include "state.h"
 
+#define FULL_WARN_INTERVAL_MS 1000 // at most one tracking-table-full warning per second
+
 // returns 1 if ip is a NUL-terminated dotted IPv4 address that fits in SRC_IP_LEN
 static int valid_ip(const char *ip) {
     if (!ip || strlen(ip) >= SRC_IP_LEN) {
@@ -120,7 +122,11 @@ int state_record_hit(sentinel_state_t *s, const char *ip, long long now_ms) {
     int t_idx = find_tracked(s, ip);
     if(t_idx < 0){
         if(s->tracked_count >= MAX_TRACKED_IPS){
-            fprintf(stderr, "[%lld] WARN tracking table full, not counting %s\n", now_ms, ip);
+            if(!s->full_warned || now_ms - s->full_warn_ms >= FULL_WARN_INTERVAL_MS) {
+                fprintf(stderr, "[%lld] WARN tracking table full, not counting %s\n", now_ms, ip);
+                s->full_warned = 1;
+                s->full_warn_ms = now_ms;
+            }
             pthread_mutex_unlock(&s->lock);
             return -2;
         }

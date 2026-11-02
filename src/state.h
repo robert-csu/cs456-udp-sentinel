@@ -35,6 +35,9 @@ struct sentinel_state {
 
     int inflight_valid;
     unsigned inflight_hash;
+
+    int full_warned; // not saved in checkpoints
+    long long full_warn_ms; // time of the last tracking-table-full warning
 };
 typedef struct sentinel_state sentinel_state_t;
 

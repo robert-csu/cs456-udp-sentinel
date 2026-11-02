@@ -59,7 +59,7 @@ static void reset_files(void)
 // fills s with a recognisable state; variant changes every value
 static void populate(sentinel_state_t *s, int variant)
 {
-    char ip[SRC_IP_LEN];
+    char ip[32];
     state_init(s, NULL);
     for(int i = 0; i < 3 + variant; i++) {
         snprintf(ip, sizeof ip, "10.9.%d.%d", variant, i + 1);

@@ -14,7 +14,7 @@ PROG_BINS = $(addprefix $(BIN)/, $(PROGS))
 TEST_SRCS = $(wildcard $(TESTDIR)/test_*.c)
 TEST_BINS = $(patsubst $(TESTDIR)/%.c, $(BIN)/tests/%, $(TEST_SRCS))
 SCRIPT_TESTS = $(wildcard $(SCRIPTS)/test_*.sh)
-COMMON_OBJS = $(BUILD)/state.o
+COMMON_OBJS = $(BUILD)/state.o $(BUILD)/checkpoint.o
 
 .PHONY: all tests test clean distclean
 
