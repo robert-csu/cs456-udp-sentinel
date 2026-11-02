@@ -44,14 +44,14 @@
 #define REPLY_ERR_FMT "ERR %s"
 
 // auto-ban: an IP sending more than X packets within Y ms is blocked
-#define AUTOBAN_MAX_PKTS 20 // X: well above a human or test client, well below a flood
-#define AUTOBAN_WINDOW_MS 1000 // Y: one second, so a burst of 20+ is clearly abnormal
+#define AUTOBAN_MAX_PKTS 20 // X
+#define AUTOBAN_WINDOW_MS 1000 // Y: one second
 
 // checkpointing
-#define CHECKPOINT_INTERVAL_MS 500 // K: same as T_MS, so at most one heartbeat of state is lost
-#define MAX_TRACKED_IPS 256 // per-IP hit table size, same as BL_MAX
-#define CHECKPOINT_PATH "state/checkpoint.dat" // latest checkpoint
-#define CHECKPOINT_TMP "state/checkpoint.tmp" // written first, then renamed over CHECKPOINT_PATH
-#define CHECKPOINT_PREV "state/checkpoint.prev" // previous good checkpoint, fallback
+#define CHECKPOINT_INTERVAL_MS 500 // K: same as T_MS
+#define MAX_TRACKED_IPS 256 // per-IP hit table size
+#define CHECKPOINT_PATH "state/checkpoint.dat"
+#define CHECKPOINT_TMP "state/checkpoint.tmp"
+#define CHECKPOINT_PREV "state/checkpoint.prev"
 
 #endif
