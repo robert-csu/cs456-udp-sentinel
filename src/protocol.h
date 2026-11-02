@@ -35,6 +35,7 @@
 
 #define BL_MAX 256
 #define BL_FILE_MAX 65536
+#define MAX_TRACKED_IPS 256
 
 // sentinel -> requester (reply to the address the request came from)
 #define REPLY_BLOCKED_FMT "OK BLOCKED %s"
@@ -49,7 +50,6 @@
 
 // checkpointing
 #define CHECKPOINT_INTERVAL_MS 500 // K: same as T_MS
-#define MAX_TRACKED_IPS 256 // per-IP hit table size
 #define CHECKPOINT_PATH "state/checkpoint.dat"
 #define CHECKPOINT_TMP "state/checkpoint.tmp"
 #define CHECKPOINT_PREV "state/checkpoint.prev"
