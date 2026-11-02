@@ -1,4 +1,4 @@
-
+#!/usr/bin/env bash
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SENTINEL="$ROOT/bin/sentinel"
 BLACKLIST="$ROOT/config/blacklist.txt"
