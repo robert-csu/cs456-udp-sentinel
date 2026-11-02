@@ -40,6 +40,20 @@ typedef enum{
     HB_ERR_RANGE = -3 // pid <= 0, seq < 0, ts < 0
 } hb_err_t;
 
+// control message types
+typedef enum{
+    CTL_UNKNOWN = 0, // unknown message type
+    CTL_PKT = 1, // packet message
+    CTL_BLOCK = 2, // block message
+    CTL_UNBLOCK = 3, // unblock message
+    CTL_QUERY = 4 // query message
+} msg_type_t;
+
+typedef enum{
+    CTL_OK  = 0, // control okay message
+    CTL_ERR_FORMAT = -1 // control format error
+} ctl_err_t;
+
 typedef struct {
     char src[SRC_IP_LEN];
     int dst_port;
@@ -51,6 +65,9 @@ typedef struct{
     char ips[BL_MAX][SRC_IP_LEN];
     int count;
 }blacklist_t;
+
+// Function pointer type for parsing control messages
+typedef int (*parse_fn)(const char *buf, size_t len, char *ip_out);
 
 // Parses a packet from a string buffer
 static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
@@ -104,6 +121,33 @@ static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
     strcpy(out->payload, payload);
 
     return PKT_OK;
+}
+
+static inline msg_type_t dispatch(const char *buf, size_t len){
+    (void)buf;
+    (void)len;
+    return CTL_UNKNOWN;
+}
+
+static inline int block_parse(const char *buf, size_t len, char *ip_out){
+    (void)buf;
+    (void)len;
+    (void)ip_out;
+    return CTL_ERR_FORMAT;
+}
+
+static inline int unblock_parse(const char *buf, size_t len, char *ip_out){
+    (void)buf;
+    (void)len;
+    (void)ip_out;
+    return CTL_ERR_FORMAT;
+}
+
+static inline int query_parse(const char *buf, size_t len, char *ip_out){
+    (void)buf;
+    (void)len;
+    (void)ip_out;
+    return CTL_ERR_FORMAT;
 }
 
 // 1 = blocked, 0 = not blocked, -1 = NULL argument

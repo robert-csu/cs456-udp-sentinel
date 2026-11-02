@@ -21,6 +21,11 @@ typedef struct {
     int output_code;
 } test_packet_parse_input_t;
 
+typedef struct {
+    const char *name;
+    parse_fn fn;
+} ctl_case_t;
+
 
 // A parameterized test with both valid and invalid input, reference the output_code to sentinel_core.h
 static const test_packet_parse_input_t test_packet_parse_inputs[] = {
@@ -1141,6 +1146,141 @@ static void test_pkt_strerror(void){
     }
 }
 
+
+// Reports a test result based on a boolean condition
+static void report(int ok, const char *what, const char *input, int rc){
+    char msg[MAX_PKT_SIZE + 128];
+    snprintf(msg, sizeof msg, "%s: \"%.80s\" (rc=%d)", what, input, rc);
+    CHECK(ok, msg);
+}
+
+// Expects a specific dispatch result
+static void expect_dispatch(const char *input, msg_type_t want){
+    msg_type_t got = dispatch(input, strlen(input));
+    report(got == want, "dispatch returned wrong type", input, (int)got);
+}
+
+// Expects a parse function to succeed with a specific IP
+static void expect_ok(parse_fn fn, const char *input, size_t len, const char *want_ip){
+    char ip[SRC_IP_LEN];
+    memset(ip, 0, sizeof(ip));
+    int rc = fn(input, len, ip);
+    report(rc == CTL_OK, "should be accepted", input, rc);
+    report(strcmp(ip, want_ip) == 0, "wrong ip returned", input, rc);
+}
+
+// Expects a parse function to fail
+static void expect_err(parse_fn fn, const char *input, size_t len){
+    char ip[SRC_IP_LEN];
+    memset(ip, 0, sizeof(ip));
+    int rc = fn(input, len, ip);
+    report(rc != CTL_OK, "should be rejected", input, rc);
+    report(ip[0] == '\0', "ip written on error", input, rc);
+}
+
+// Tests the dispatcher function
+static void test_dispatcher(void){
+    expect_dispatch("BLOCK|ip=10.0.0.5", CTL_BLOCK);
+    expect_dispatch("UNBLOCK|ip=10.0.0.5", CTL_UNBLOCK);
+    expect_dispatch("QUERY|ip=10.0.0.5", CTL_QUERY);
+    expect_dispatch("PKT|src=10.0.0.5|dst_port=80|seq=1|payload=x", CTL_PKT);
+
+    static const char *unknown[] = {
+        "FOO|ip=10.0.0.5", "block|ip=10.0.0.5", "|ip=10.0.0.5", "BLOCKED|ip=10.0.0.5", "BLOCK", "BLOCK ip=10.0.0.5", "",
+    };
+
+    for (size_t i = 0; i < sizeof unknown / sizeof unknown[0]; i++){
+        expect_dispatch(unknown[i], CTL_UNKNOWN);
+    }
+}
+
+typedef struct {
+    const char *tail;
+    int ok;
+    const char *ip;
+} tail_case_t;
+
+static const tail_case_t tail_cases[] = {
+    {"|ip=10.0.0.5", 1, "10.0.0.5"},
+    {"|ip=255.255.255.255", 1, "255.255.255.255"},
+    {"|ip=10.0.0.5\n", 1, "10.0.0.5"},
+
+    {"|", 0, NULL},
+    {"", 0, NULL},
+    {"|addr=10.0.0.5", 0, NULL},
+    {"|IP=10.0.0.5", 0, NULL},
+    {"|ip=", 0, NULL},
+
+    {"|ip=256.1.1.1", 0, NULL},
+    {"|ip=abc", 0, NULL},
+    {"|ip=10.0.0", 0, NULL},
+
+    {"|ip=255.255.255.2555", 0, NULL},
+
+    {"|ip=10.0.0.5|x=1", 0, NULL},
+    {"|ip=10.0.0.5 ", 0, NULL},
+    {"|ip=10.0.0.5\n\n", 0, NULL},
+};
+
+static const ctl_case_t kinds[] = {
+    {"BLOCK", block_parse}, {"UNBLOCK", unblock_parse}, {"QUERY", query_parse},
+};
+#define NKINDS (sizeof kinds / sizeof kinds[0])
+
+// Tests all parser functions
+static void test_parsers(void){
+    char buf[MAX_PKT_SIZE];
+
+    // Test each parser against all tail cases
+    for (size_t k = 0; k < NKINDS; k++){
+        for (size_t i = 0; i < sizeof tail_cases / sizeof tail_cases[0]; i++){
+            int n = snprintf(buf, sizeof buf, "%s%s", kinds[k].name, tail_cases[i].tail);
+            if (tail_cases[i].ok){
+                expect_ok(kinds[k].fn, buf, (size_t)n, tail_cases[i].ip);
+            } else {
+                expect_err(kinds[k].fn, buf, (size_t)n);
+            }
+        }
+    }
+
+    // Test each parser against messages of other types
+    for (size_t k = 0; k < NKINDS; k++){
+        for (size_t j = 0; j < NKINDS; j++){
+            if (j == k) continue;
+            int n = snprintf(buf, sizeof buf, "%s|ip=10.0.0.5", kinds[j].name);
+            expect_err(kinds[k].fn, buf, (size_t)n);
+        }
+    }
+
+    // Test case sensitivity
+    for (size_t k = 0; k < NKINDS; k++){
+        size_t n = strlen(kinds[k].name);
+        for (size_t i = 0; i < n; i++){
+            buf[i] = (char)(kinds[k].name[i] - 'A' + 'a');
+        }
+        int tail = snprintf(buf + n, sizeof buf - n, "|ip=10.0.0.5");
+        expect_err(kinds[k].fn, buf, n + (size_t)tail);
+    }
+
+    // Test long ip field
+    for (size_t k = 0; k < NKINDS; k++){
+        int n = snprintf(buf, sizeof buf, "%s|ip=", kinds[k].name);
+        memset(buf + n, '1', 200);
+        buf[n + 200] = '\0';
+        expect_err(kinds[k].fn, buf, (size_t)n + 200);
+    }
+
+    // Test malformed ip field
+    for (size_t k = 0; k < NKINDS; k++){
+        int n = snprintf(buf, sizeof buf, "%s|ip=10.0.0", kinds[k].name);
+        buf[n] = '\0';
+        memcpy(buf + n + 1, ".5", 2);
+        expect_err(kinds[k].fn, buf, (size_t)n + 3);
+    }
+
+    printf("[PASS] control message parsers (BCC table)\n");
+}
+
 int main(void)
 {
     test_packet_inputs();
@@ -1159,7 +1299,8 @@ int main(void)
     test_timespec_to_ms();
     test_now_ms();
     test_pkt_strerror();
-
+    test_dispatcher();
+    test_parsers();
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;
