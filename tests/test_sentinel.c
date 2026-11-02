@@ -1201,6 +1201,40 @@ static void test_dispatcher(void){
     }
 }
 
+static void expect_dispatch_len(const char *input, size_t len, msg_type_t want){
+    msg_type_t got = dispatch(input, len);
+    report(got == want, "dispatch returned wrong type for explicit length", input, (int)got);
+}
+
+// dispatch must only look at the first len bytes, as recvfrom does not NUL-terminate
+static void test_dispatcher_len(void){
+    expect_dispatch_len("BLOCK|ip=10.0.0.5", 3, CTL_UNKNOWN);
+    expect_dispatch_len("BLOCK|ip=10.0.0.5", 5, CTL_UNKNOWN);
+    expect_dispatch_len("BLOCK|ip=10.0.0.5", 6, CTL_BLOCK);
+    expect_dispatch_len("UNBLOCK|ip=10.0.0.5", 7, CTL_UNKNOWN);
+    expect_dispatch_len("UNBLOCK|ip=10.0.0.5", 8, CTL_UNBLOCK);
+
+    expect_dispatch_len("BLOCK|ip=10.0.0.5", 0, CTL_UNKNOWN);
+    CHECK(dispatch(NULL, 10) == CTL_UNKNOWN, "dispatch(NULL) should be CTL_UNKNOWN");
+
+    const char *with_delim = "BLOCK|";
+    char *buf = malloc(strlen(with_delim));
+    CHECK(buf != NULL, "malloc failed");
+    if(buf){
+        memcpy(buf, with_delim, strlen(with_delim));
+        CHECK(dispatch(buf, strlen(with_delim)) == CTL_BLOCK, "unterminated BLOCK| should be CTL_BLOCK");
+        free(buf);
+    }
+
+    buf = malloc(8);
+    CHECK(buf != NULL, "malloc failed");
+    if(buf){
+        memset(buf, 'A', 8);
+        CHECK(dispatch(buf, 8) == CTL_UNKNOWN, "unterminated buffer with no delimiter should be CTL_UNKNOWN");
+        free(buf);
+    }
+}
+
 typedef struct {
     const char *tail;
     int ok;
@@ -1307,6 +1341,7 @@ int main(void)
     test_now_ms();
     test_pkt_strerror();
     test_dispatcher();
+    test_dispatcher_len();
     test_parsers();
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
