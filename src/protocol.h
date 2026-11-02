@@ -36,4 +36,22 @@
 #define BL_MAX 256
 #define BL_FILE_MAX 65536
 
+// sentinel -> requester (reply to the address the request came from)
+#define REPLY_BLOCKED_FMT "OK BLOCKED %s"
+#define REPLY_UNBLOCKED_FMT "OK UNBLOCKED %s"
+#define REPLY_QUERY_BLOCKED_FMT "BLOCKED hits=%d"
+#define REPLY_QUERY_ALLOWED_FMT "ALLOWED hits=%d"
+#define REPLY_ERR_FMT "ERR %s"
+
+// auto-ban: an IP sending more than X packets within Y ms is blocked
+#define AUTOBAN_MAX_PKTS 20 // X: well above a human or test client, well below a flood
+#define AUTOBAN_WINDOW_MS 1000 // Y: one second, so a burst of 20+ is clearly abnormal
+
+// checkpointing
+#define CHECKPOINT_INTERVAL_MS 500 // K: same as T_MS, so at most one heartbeat of state is lost
+#define MAX_TRACKED_IPS 256 // per-IP hit table size, same as BL_MAX
+#define CHECKPOINT_PATH "state/checkpoint.dat" // latest checkpoint
+#define CHECKPOINT_TMP "state/checkpoint.tmp" // written first, then renamed over CHECKPOINT_PATH
+#define CHECKPOINT_PREV "state/checkpoint.prev" // previous good checkpoint, fallback
+
 #endif

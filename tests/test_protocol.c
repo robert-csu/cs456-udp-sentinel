@@ -85,8 +85,38 @@ static void test_ctl_roundtrip(void)
     }
 }
 
+static void test_part2_constants(void)
+{
+    CHECK(AUTOBAN_MAX_PKTS > 0, "AUTOBAN_MAX_PKTS must be positive");
+    CHECK(AUTOBAN_WINDOW_MS > 0, "AUTOBAN_WINDOW_MS must be positive");
+    CHECK(CHECKPOINT_INTERVAL_MS > 0, "CHECKPOINT_INTERVAL_MS must be positive");
+    CHECK(MAX_TRACKED_IPS > 0, "MAX_TRACKED_IPS must be positive");
+    CHECK(strlen(CHECKPOINT_PATH) > 0, "CHECKPOINT_PATH empty");
+    CHECK(strcmp(CHECKPOINT_PATH, CHECKPOINT_TMP) != 0, "CHECKPOINT_TMP must differ from CHECKPOINT_PATH");
+    CHECK(strcmp(CHECKPOINT_PATH, CHECKPOINT_PREV) != 0, "CHECKPOINT_PREV must differ from CHECKPOINT_PATH");
+    CHECK(strcmp(CHECKPOINT_TMP, CHECKPOINT_PREV) != 0, "CHECKPOINT_TMP must differ from CHECKPOINT_PREV");
+}
+
+static void test_replies(void)
+{
+    char buf[MAX_PKT_SIZE];
+
+    snprintf(buf, sizeof buf, REPLY_BLOCKED_FMT, "10.0.0.5");
+    CHECK(strcmp(buf, "OK BLOCKED 10.0.0.5") == 0, "OK BLOCKED reply wrong");
+    snprintf(buf, sizeof buf, REPLY_UNBLOCKED_FMT, "10.0.0.5");
+    CHECK(strcmp(buf, "OK UNBLOCKED 10.0.0.5") == 0, "OK UNBLOCKED reply wrong");
+    snprintf(buf, sizeof buf, REPLY_QUERY_BLOCKED_FMT, 3);
+    CHECK(strcmp(buf, "BLOCKED hits=3") == 0, "BLOCKED reply wrong");
+    snprintf(buf, sizeof buf, REPLY_QUERY_ALLOWED_FMT, 0);
+    CHECK(strcmp(buf, "ALLOWED hits=0") == 0, "ALLOWED reply wrong");
+    snprintf(buf, sizeof buf, REPLY_ERR_FMT, "bad ip");
+    CHECK(strcmp(buf, "ERR bad ip") == 0, "ERR reply wrong");
+}
+
 int main(void)
 {
+    test_part2_constants();
+    test_replies();
     test_constants();
     test_pkt_roundtrip();
     test_heartbeat_roundtrip();
