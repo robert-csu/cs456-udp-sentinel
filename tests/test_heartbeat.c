@@ -18,6 +18,7 @@ static int failures = 0;
 } while (0)
 
 #define RECV_TIMEOUT_MS 2000
+#define HB_TEST_EPOCH 7 // nonzero, so a thread that forgets to send the epoch is caught
 
 static long long mono_ms(void)
 {
@@ -42,8 +43,8 @@ static int open_test_listener(int *port)
     socklen_t len = sizeof addr;
     struct timeval tv = {.tv_sec = RECV_TIMEOUT_MS / 1000, .tv_usec = (RECV_TIMEOUT_MS % 1000) * 1000};
     if(bind(sock, (struct sockaddr *)&addr, sizeof addr) < 0 ||
-       getsockname(sock, (struct sockaddr *)&addr, &len) < 0 ||
-       setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv) < 0) {
+        getsockname(sock, (struct sockaddr *)&addr, &len) < 0 ||
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv) < 0) {
         close(sock);
         return -1;
     }
@@ -62,7 +63,7 @@ static void test_sends_periodic_heartbeats(void)
     }
 
     atomic_int stop = 0;
-    hb_args_t args = {.port = port, .stop = &stop};
+    hb_args_t args = {.port = port, .stop = &stop, .epoch = HB_TEST_EPOCH};
     pthread_t tid;
     int rc = pthread_create(&tid, NULL, heartbeat_thread, &args);
     CHECK(rc == 0, "could not create heartbeat thread");
@@ -71,7 +72,7 @@ static void test_sends_periodic_heartbeats(void)
         return;
     }
 
-    int pid[3], seq[3];
+    int pid[3], epoch[3], seq[3];
     long long ts[3], arrived[3];
     int got = 0;
 
@@ -85,8 +86,8 @@ static void test_sends_periodic_heartbeats(void)
         arrived[i] = mono_ms();
         buf[n] = '\0';
 
-        int matched = sscanf(buf, HB_FMT_IN, &pid[i], &seq[i], &ts[i]);
-        if(matched != 3) {
+        int matched = sscanf(buf, HB_FMT_IN, &pid[i], &epoch[i], &seq[i], &ts[i]);
+        if(matched != 4) {
             CHECK(0, "heartbeat did not parse");
             break;
         }
@@ -101,6 +102,7 @@ static void test_sends_periodic_heartbeats(void)
 
     for(int i = 0; i < got; i++) {
         CHECK(pid[i] == (int)getpid(), "heartbeat pid is not the sender's pid");
+        CHECK(epoch[i] == HB_TEST_EPOCH, "heartbeat epoch is not the epoch the thread was given");
         CHECK(ts[i] > 0, "heartbeat ts must be positive");
     }
 

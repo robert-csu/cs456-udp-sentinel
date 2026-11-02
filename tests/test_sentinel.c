@@ -30,7 +30,7 @@ typedef struct {
 // A parameterized test with both valid and invalid input, reference the output_code to sentinel_core.h
 static const test_packet_parse_input_t test_packet_parse_inputs[] = {
     {.name = "base_valid_packet", .input = "PKT|src=10.0.0.5|dst_port=8080|seq=7|payload=hello", .output_code = PKT_OK,},
-    {.name = "heartbeat_prefix", .input = "HEARTBEAT|pid=1|seq=2|ts=3", .output_code = PKT_ERR_FORMAT},
+    {.name = "heartbeat_prefix", .input = "HEARTBEAT|pid=1|epoch=0|seq=2|ts=3", .output_code = PKT_ERR_FORMAT},
     {.name = "empty_string", .input = "", .output_code = PKT_ERR_FORMAT},
     {.name = "lowercase_prefix", .input = "pkt|src=10.0.0.5|dst_port=8080|seq=7|payload=hello", .output_code = PKT_ERR_FORMAT},
     {.name = "src_out_of_range", .input = "PKT|src=999.1.1.1|dst_port=8080|seq=7|payload=hello", .output_code = PKT_ERR_SRC},
@@ -657,29 +657,35 @@ typedef struct{
     const char *name;
     size_t n;
     int pid;
+    int epoch;
     int seq;
     long long ts;
     int output_code;
     const char *expected_text;
 } test_format_heartbeat_t;
 
+// Every output_code is the old length + 8 for "|epoch=1" (base epoch is 1)
 static const test_format_heartbeat_t test_format_heartbeat_inputs[] = {
-    {.name = "base", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 5, .ts = 1500, .output_code = 32, .expected_text = "HEARTBEAT|pid=1234|seq=5|ts=1500"},
-    {.name = "n_exact_fit", .n = 33, .pid = 1234, .seq = 5, .ts = 1500, .output_code = 32, .expected_text = "HEARTBEAT|pid=1234|seq=5|ts=1500"},
-    {.name = "n_one_short", .n = 32, .pid = 1234, .seq = 5, .ts = 1500, .output_code = HB_ERR_TRUNC, .expected_text = NULL},
-    {.name = "n_one", .n = 1, .pid = 1234, .seq = 5, .ts = 1500, .output_code = HB_ERR_TRUNC, .expected_text = NULL},
-    {.name = "n_zero", .n = 0, .pid = 1234, .seq = 5, .ts = 1500, .output_code = HB_ERR_TRUNC, .expected_text = NULL},
-    {.name = "pid_min", .n = MAX_PKT_SIZE, .pid = 1, .seq = 5, .ts = 1500, .output_code = 29, .expected_text = "HEARTBEAT|pid=1|seq=5|ts=1500"},
-    {.name = "pid_int_max", .n = MAX_PKT_SIZE, .pid = INT_MAX, .seq = 5, .ts = 1500, .output_code = 38, .expected_text = "HEARTBEAT|pid=2147483647|seq=5|ts=1500"},
-    {.name = "pid_zero", .n = MAX_PKT_SIZE, .pid = 0, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
-    {.name = "pid_zero_n_zero", .n = 0, .pid = 0, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
-    {.name = "pid_negative", .n = MAX_PKT_SIZE, .pid = -1, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
-    {.name = "seq_zero", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 0, .ts = 1500, .output_code = 32, .expected_text = "HEARTBEAT|pid=1234|seq=0|ts=1500"},
-    {.name = "seq_int_max", .n = MAX_PKT_SIZE, .pid = 1234, .seq = INT_MAX, .ts = 1500, .output_code = 41, .expected_text = "HEARTBEAT|pid=1234|seq=2147483647|ts=1500"},
-    {.name = "seq_negative", .n = MAX_PKT_SIZE, .pid = 1234, .seq = -1, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
-    {.name = "ts_zero", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 5, .ts = 0, .output_code = 29, .expected_text = "HEARTBEAT|pid=1234|seq=5|ts=0"},
-    {.name = "ts_llong_max", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 5, .ts = LLONG_MAX, .output_code = 47, .expected_text = "HEARTBEAT|pid=1234|seq=5|ts=9223372036854775807"},
-    {.name = "ts_negative", .n = MAX_PKT_SIZE, .pid = 1234, .seq = 5, .ts = -1, .output_code = HB_ERR_RANGE, .expected_text = NULL}
+    {.name = "base", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = 1, .seq = 5, .ts = 1500, .output_code = 40, .expected_text = "HEARTBEAT|pid=1234|epoch=1|seq=5|ts=1500"},
+    {.name = "n_exact_fit", .n = 41, .pid = 1234, .epoch = 1, .seq = 5, .ts = 1500, .output_code = 40, .expected_text = "HEARTBEAT|pid=1234|epoch=1|seq=5|ts=1500"},
+    {.name = "n_one_short", .n = 40, .pid = 1234, .epoch = 1, .seq = 5, .ts = 1500, .output_code = HB_ERR_TRUNC, .expected_text = NULL},
+    {.name = "n_one", .n = 1, .pid = 1234, .epoch = 1, .seq = 5, .ts = 1500, .output_code = HB_ERR_TRUNC, .expected_text = NULL},
+    {.name = "n_zero", .n = 0, .pid = 1234, .epoch = 1, .seq = 5, .ts = 1500, .output_code = HB_ERR_TRUNC, .expected_text = NULL},
+    {.name = "pid_min", .n = MAX_PKT_SIZE, .pid = 1, .epoch = 1, .seq = 5, .ts = 1500, .output_code = 37, .expected_text = "HEARTBEAT|pid=1|epoch=1|seq=5|ts=1500"},
+    {.name = "pid_int_max", .n = MAX_PKT_SIZE, .pid = INT_MAX, .epoch = 1, .seq = 5, .ts = 1500, .output_code = 46, .expected_text = "HEARTBEAT|pid=2147483647|epoch=1|seq=5|ts=1500"},
+    {.name = "pid_zero", .n = MAX_PKT_SIZE, .pid = 0, .epoch = 1, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
+    {.name = "pid_zero_n_zero", .n = 0, .pid = 0, .epoch = 1, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
+    {.name = "pid_negative", .n = MAX_PKT_SIZE, .pid = -1, .epoch = 1, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
+    // epoch: 0 is the first primary, INT_MAX is the widest value, negative is invalid (the rule is assumed: epoch >= 0)
+    {.name = "epoch_zero", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = 0, .seq = 5, .ts = 1500, .output_code = 40, .expected_text = "HEARTBEAT|pid=1234|epoch=0|seq=5|ts=1500"},
+    {.name = "epoch_int_max", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = INT_MAX, .seq = 5, .ts = 1500, .output_code = 49, .expected_text = "HEARTBEAT|pid=1234|epoch=2147483647|seq=5|ts=1500"},
+    {.name = "epoch_negative", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = -1, .seq = 5, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
+    {.name = "seq_zero", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = 1, .seq = 0, .ts = 1500, .output_code = 40, .expected_text = "HEARTBEAT|pid=1234|epoch=1|seq=0|ts=1500"},
+    {.name = "seq_int_max", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = 1, .seq = INT_MAX, .ts = 1500, .output_code = 49, .expected_text = "HEARTBEAT|pid=1234|epoch=1|seq=2147483647|ts=1500"},
+    {.name = "seq_negative", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = 1, .seq = -1, .ts = 1500, .output_code = HB_ERR_RANGE, .expected_text = NULL},
+    {.name = "ts_zero", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = 1, .seq = 5, .ts = 0, .output_code = 37, .expected_text = "HEARTBEAT|pid=1234|epoch=1|seq=5|ts=0"},
+    {.name = "ts_llong_max", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = 1, .seq = 5, .ts = LLONG_MAX, .output_code = 55, .expected_text = "HEARTBEAT|pid=1234|epoch=1|seq=5|ts=9223372036854775807"},
+    {.name = "ts_negative", .n = MAX_PKT_SIZE, .pid = 1234, .epoch = 1, .seq = 5, .ts = -1, .output_code = HB_ERR_RANGE, .expected_text = NULL}
 };
 
 static void test_format_heartbeat(void){
@@ -688,7 +694,7 @@ static void test_format_heartbeat(void){
         test_format_heartbeat_t row = test_format_heartbeat_inputs[i];
         char buf[MAX_PKT_SIZE];
         memset(buf, 0xAA, sizeof(buf));
-        int result = format_heartbeat(buf, row.n, row.pid, row.seq, row.ts);
+        int result = format_heartbeat(buf, row.n, row.pid, row.epoch, row.seq, row.ts);
         if(result != row.output_code){
             fprintf(stderr, "Test failed for input '%s': expected %d, got %d\n", row.name, row.output_code, result);
             failures++;
@@ -699,6 +705,7 @@ static void test_format_heartbeat(void){
             // strnlen so a missing terminator is reported and not read past the buffer
             size_t len = strnlen(buf, sizeof(buf));
             int got_pid = 0;
+            int got_epoch = 0;
             int got_seq = 0;
             long long got_ts = 0;
             if(len == sizeof(buf) || (size_t)result != len){
@@ -709,8 +716,8 @@ static void test_format_heartbeat(void){
                 fprintf(stderr, "Test failed for input '%s': expected '%s', got '%s'\n", row.name, row.expected_text, buf);
                 failures++;
             }
-            else if(sscanf(buf, HB_FMT_IN, &got_pid, &got_seq, &got_ts) != 3
-                    || got_pid != row.pid || got_seq != row.seq || got_ts != row.ts){
+            else if(sscanf(buf, HB_FMT_IN, &got_pid, &got_epoch, &got_seq, &got_ts) != 4
+                    || got_pid != row.pid || got_epoch != row.epoch || got_seq != row.seq || got_ts != row.ts){
                 fprintf(stderr, "Test failed for input '%s': round trip through HB_FMT_IN did not match\n", row.name);
                 failures++;
             }
@@ -740,7 +747,7 @@ static void test_format_heartbeat(void){
 }
 
 static void test_format_heartbeat_special(void){
-    int result = format_heartbeat(NULL, MAX_PKT_SIZE, 1234, 5, 1500);
+    int result = format_heartbeat(NULL, MAX_PKT_SIZE, 1234, 1, 5, 1500);
     if(result != HB_ERR_NULL){
         fprintf(stderr, "Test failed: buf NULL: expected %d, got %d\n", HB_ERR_NULL, result);
         failures++;

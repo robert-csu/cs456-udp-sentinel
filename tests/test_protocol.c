@@ -37,16 +37,17 @@ static void test_pkt_roundtrip(void)
 static void test_heartbeat_roundtrip(void)
 {
     char buf[MAX_PKT_SIZE];
-    int pid = 0, seq = 0;
+    int pid = 0, epoch = 0, seq = 0;
     long long ts = 0;
 
-    int len = snprintf(buf, sizeof buf, HB_FMT_OUT, 4321, 9, 1730000000000LL);
+    int len = snprintf(buf, sizeof buf, HB_FMT_OUT, 4321, 2, 9, 1730000000000LL);
     CHECK(len > 0 && len < MAX_PKT_SIZE, "HEARTBEAT message does not fit MAX_PKT_SIZE");
     CHECK(strncmp(buf, MSG_HEARTBEAT "|", sizeof(MSG_HEARTBEAT)) == 0, "HEARTBEAT message has wrong prefix");
 
-    int n = sscanf(buf, HB_FMT_IN, &pid, &seq, &ts);
-    CHECK(n == 3, "HEARTBEAT parse did not return 3 fields");
+    int n = sscanf(buf, HB_FMT_IN, &pid, &epoch, &seq, &ts);
+    CHECK(n == 4, "HEARTBEAT parse did not return 4 fields");
     CHECK(pid == 4321, "HEARTBEAT pid mismatch");
+    CHECK(epoch == 2, "HEARTBEAT epoch mismatch");
     CHECK(seq == 9, "HEARTBEAT seq mismatch");
     CHECK(ts == 1730000000000LL, "HEARTBEAT ts mismatch");
 }
@@ -54,12 +55,34 @@ static void test_heartbeat_roundtrip(void)
 static void test_malformed_rejected(void)
 {
     char ip[SRC_IP_LEN], payload[PAYLOAD_LEN];
-    int dst_port, seq, pid, hb_seq;
+    int dst_port, seq, pid, hb_epoch, hb_seq;
     long long ts;
 
     CHECK(sscanf("PKT|src=1.2.3.4|dst_port=80", PKT_FMT_IN, ip, &dst_port, &seq, payload) != 4,"truncated PKT should not parse fully");
-    CHECK(sscanf("HEARTBEAT|pid=1|seq=2", HB_FMT_IN, &pid, &hb_seq, &ts) != 3,"truncated HEARTBEAT should not parse fully");
-    CHECK(sscanf("PKT|src=1.2.3.4|dst_port=80|seq=1|payload=x", HB_FMT_IN, &pid, &hb_seq, &ts) != 3,"PKT must not parse as HEARTBEAT");
+    CHECK(sscanf("HEARTBEAT|pid=1|epoch=0|seq=2", HB_FMT_IN, &pid, &hb_epoch, &hb_seq, &ts) != 4,"truncated HEARTBEAT should not parse fully");
+    CHECK(sscanf("HEARTBEAT|pid=1|seq=2|ts=3", HB_FMT_IN, &pid, &hb_epoch, &hb_seq, &ts) != 4,"old HEARTBEAT without epoch must not parse");
+    CHECK(sscanf("PKT|src=1.2.3.4|dst_port=80|seq=1|payload=x", HB_FMT_IN, &pid, &hb_epoch, &hb_seq, &ts) != 4,"PKT must not parse as HEARTBEAT");
+}
+
+// BLOCK / UNBLOCK / QUERY each write and read back the same ip
+static void test_ctl_roundtrip(void)
+{
+    static const struct { const char *out_fmt, *in_fmt, *prefix; } kinds[] = {
+        {BL_FMT_OUT, BL_FMT_IN, "BLOCK|ip="},
+        {UNBL_FMT_OUT, UNBL_FMT_IN, "UNBLOCK|ip="},
+        {QUERY_FMT_OUT, QUERY_FMT_IN, "QUERY|ip="},
+    };
+
+    for (size_t i = 0; i < sizeof kinds / sizeof kinds[0]; i++) {
+        char buf[MAX_PKT_SIZE], ip[SRC_IP_LEN];
+        int len = snprintf(buf, sizeof buf, kinds[i].out_fmt, "255.255.255.255");
+        CHECK(len > 0 && len < MAX_PKT_SIZE, "control message does not fit MAX_PKT_SIZE");
+        CHECK(strncmp(buf, kinds[i].prefix, strlen(kinds[i].prefix)) == 0, "control message has wrong prefix");
+
+        int n = sscanf(buf, kinds[i].in_fmt, ip);
+        CHECK(n == 1, "control parse did not return 1 field");
+        CHECK(strcmp(ip, "255.255.255.255") == 0, "control ip mismatch");
+    }
 }
 
 int main(void)
@@ -68,6 +91,7 @@ int main(void)
     test_pkt_roundtrip();
     test_heartbeat_roundtrip();
     test_malformed_rejected();
+    test_ctl_roundtrip();
 
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
