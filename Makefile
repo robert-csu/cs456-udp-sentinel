@@ -15,6 +15,7 @@ PROG_OBJS = $(addprefix $(BUILD)/, $(addsuffix .o, $(PROGS)))
 TEST_SRCS = $(wildcard $(TESTDIR)/test_*.c)
 TEST_BINS = $(patsubst $(TESTDIR)/%.c,$(BIN)/tests/%,$(TEST_SRCS))
 SCRIPT_TESTS = $(wildcard $(SCRIPTS)/test_*.sh)
+COMMON_OBJS = $(BUILD)/state.o $(BUILD)/checkpoint.o
 
 BLACKLIST = $(CONFIG)/blacklist.txt
 

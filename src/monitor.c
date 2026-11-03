@@ -236,6 +236,7 @@ int main(void)
 
             /* parse expected heartbeat format */
             int pid;
+            int epoch;
             int seq;
             int epoch;
             long long timestamp;
@@ -246,6 +247,7 @@ int main(void)
                 buf,
                 HB_FMT_IN "%n",
                 &pid,
+                &epoch,
                 &seq,
                 &timestamp,
                 &epoch,

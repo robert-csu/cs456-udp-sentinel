@@ -3,3 +3,6 @@ bin/
 !logs/.gitkeep
 *.o
 beat.bin
+state/*
+!state/.gitkeep
+monitor.log

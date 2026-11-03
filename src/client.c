@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <time.h>
+#include <sys/time.h>
 #include "protocol.h"
 
 int main(void)
@@ -19,6 +20,17 @@ int main(void)
     if (sockfd < 0)
     {
         perror("socket");
+        return(EXIT_FAILURE);
+    }
+
+    //time out for UDP responses
+    struct timeval timeout;
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("setsockopt SO_RCVTIMEO");
+        close(sockfd);
         return(EXIT_FAILURE);
     }
 
@@ -64,6 +76,39 @@ int main(void)
             nanosleep(&delay, NULL);
         }
     }
+
+    // Query Sentinel for client state
+    char query[MAX_PKT_SIZE];
+    int query_len = snprintf(query, sizeof(query), QUERY_FMT_OUT, HOST);
+
+    if (query_len < 0 || query_len >= (int)sizeof(query)) {
+        fprintf(stderr, "Query formatting error or query too large.\n");
+        close(sockfd);
+        return(EXIT_FAILURE);
+    }
+
+    printf("\nSending query to Sentinel: %s\n", query);
+
+    if (sendto(sockfd, query, (size_t) query_len, 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("sendto query");
+        close(sockfd);
+        return(EXIT_FAILURE);
+    }
+
+    //Waiting on sentinel
+    char response[MAX_PKT_SIZE];
+    ssize_t response_len = recv(sockfd, response, sizeof(response) - 1, 0);
+
+    if (response_len < 0) {
+        perror("No response from Sentinel");
+    } else{
+        response[response_len] = '\0';
+        printf("Response from Sentinel: %s\n", response);
+    }
+
+
+
     close(sockfd);
     return EXIT_SUCCESS;
 }
+
