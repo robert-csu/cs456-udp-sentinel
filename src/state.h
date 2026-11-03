@@ -2,6 +2,7 @@
 #ifndef STATE_H
 #define STATE_H
 
+#include <stdint.h>
 #include <pthread.h>
 #include "protocol.h"
 #include "sentinel_core.h"
@@ -34,10 +35,13 @@ struct sentinel_state {
     int epoch; // 0 for the first primary, +1 for each standby takeover
 
     int inflight_valid;
-    unsigned inflight_hash;
+    uint32_t inflight_hash;
 
     int full_warned; // not saved in checkpoints
     long long full_warn_ms; // time of the last tracking-table-full warning
+
+    int suspect_valid; // not saved in checkpoint
+    unsigned suspect_hash; // hash of the packet that was in flight when the previous primary died
 };
 typedef struct sentinel_state sentinel_state_t;
 
@@ -50,5 +54,13 @@ state_result_t state_unblock(sentinel_state_t *s, const char *ip);
 int state_query(sentinel_state_t *s, const char *ip, int *hits);
 
 int state_record_hit(sentinel_state_t *s, const char *ip, long long now_ms);
+
+int state_begin_packet(sentinel_state_t *s, unsigned hash);
+
+int state_end_packet(sentinel_state_t *s);
+
+int state_adopt_suspect(sentinel_state_t *s);
+
+int state_is_suspect(sentinel_state_t *s, unsigned hash);
 
 #endif

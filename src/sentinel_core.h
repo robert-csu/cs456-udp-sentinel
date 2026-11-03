@@ -421,6 +421,19 @@ static inline long long now_ms(void) {
     return timespec_to_ms(&ts);
 }
 
+// standard constrants for FNV-1a hash
+static inline uint32_t packet_hash(const char *buf, size_t len) {
+    uint32_t hash = 0x811C9DC5u;
+    if(!buf) {
+        return hash;
+    }
+    for(size_t i = 0; i < len; i++) {
+        hash ^= (unsigned char)buf[i];
+        hash *= 0x01000193u;
+    }
+    return hash;
+}
+
 // short description of a parse_pkt result, or "unknown error"; never NULL
 static inline const char *pkt_strerror(int code) {
     switch(code) {

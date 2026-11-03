@@ -18,6 +18,7 @@
 #include "checkpoint.h"
 
 static atomic_int stop_request = 0;
+static int test_stall_ms = 0;
 
 static void on_signal(int sig) {
     (void)sig;
@@ -100,13 +101,26 @@ static const char *control_error(const char *buf) {
     return strchr(body + 4, '|') ? "bad format" : "bad ip";
 }
 
-static void handle_pkt(sentinel_state_t *state, char *buf, const char *ip, const char *from) {
+static void handle_pkt(sentinel_state_t *state, char *buf, size_t len, const char *ip, const char *from) {
+    unsigned hash = packet_hash(buf, len);
+    if(state_is_suspect(state, hash) == 1) {
+        printf("[%lld] WARN skipped suspected poison-pill packet from %s\n", hb_now_ms(), from);
+        return;
+    }
+    state_begin_packet(state, hash);
+    
     pkt_t pkt;
     pkt_err_t err = parse_pkt(buf, &pkt);
     if(err != PKT_OK) {
         printf("dropped from %s: %s\n", from, pkt_strerror(err));
         return;
     }
+
+    if(test_stall_ms > 0 && strcmp(pkt.payload, "STALL") == 0) {
+        struct timespec pause = {.tv_sec = test_stall_ms / 1000, .tv_nsec = (test_stall_ms % 1000) * 1000000L};
+        nanosleep(&pause, NULL);
+    }
+
     state_record_hit(state, ip, hb_now_ms());
     const char *verdict = state_query(state, ip, NULL) == 1 ? "blocked" : "accepted";
     printf("%s %s (dst_port %d, seq %d)", verdict, from, pkt.dst_port, pkt.seq);
@@ -114,6 +128,7 @@ static void handle_pkt(sentinel_state_t *state, char *buf, const char *ip, const
         printf(" [claims src=%s]", pkt.src);
     }
     printf("\n");
+    state_end_packet(state);
 
 }
 
@@ -172,7 +187,7 @@ static void handle_datagram(sentinel_state_t *state, int sock, const struct sock
 
     switch(dispatch(buf, (size_t)len)){
         case CTL_PKT:
-            handle_pkt(state, buf, ip, from);
+            handle_pkt(state, buf, (size_t)len, ip, from);
             break;
         case CTL_BLOCK:
             handle_control(state, sock, sender, CTL_BLOCK, buf, (size_t)len, from);
@@ -224,6 +239,13 @@ int main(int argc, char *argv[]) {
     for(int i = 1; i < argc; i++) {
         if(strcmp(argv[i], "--no-crash") == 0) {
             no_crash = 1;
+        } else if(strcmp(argv[i], "--test-stall-ms") == 0) {
+            unsigned v;
+            if(++i >= argc || parse_uint(argv[i], INT_MAX, &v) != 0) {
+                fprintf(stderr, "--test-stall-ms needs a non-negative number\n");
+                return 2;
+            }
+            test_stall_ms = (int)v;
         } else if(strcmp(argv[i], "--standby") == 0) {
             standby = 1;
         } else if(strcmp(argv[i], "--blacklist") == 0) {
@@ -291,6 +313,9 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         state.epoch++;
+        if(state_adopt_suspect(&state) == 1) {
+            printf("[%lld] INFO checkpoint had a packet in flight; it is skipped if it arrives again\n", hb_now_ms());
+        }
         if(source == CKPT_SRC_BASE) {
             printf("[%lld] [Service Restored] standby active, no usable checkpoint, using base blacklist (%d blocked IPs, epoch %d)\n", hb_now_ms(), state.blacklist.count, state.epoch);
         }

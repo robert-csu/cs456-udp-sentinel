@@ -166,3 +166,54 @@ int state_record_hit(sentinel_state_t *s, const char *ip, long long now_ms) {
     pthread_mutex_unlock(&s->lock);
     return banned;
 }
+
+int state_begin_packet(sentinel_state_t *s, unsigned hash) {
+    if(!s) {
+        return -1;
+    }
+    pthread_mutex_lock(&s->lock);
+    s->inflight_valid = 1;
+    s->inflight_hash = hash;
+    pthread_mutex_unlock(&s->lock);
+    return 0;
+}
+
+int state_end_packet(sentinel_state_t *s) {
+    if(!s) {
+        return -1;
+    }
+    pthread_mutex_lock(&s->lock);
+    s->inflight_valid = 0;
+    s->inflight_hash = 0;
+    pthread_mutex_unlock(&s->lock);
+    return 0;
+}
+
+int state_adopt_suspect(sentinel_state_t *s) {
+    if(!s) {
+        return -1;
+    }
+    pthread_mutex_lock(&s->lock);
+    int adopted = s->inflight_valid != 0;
+    if(adopted) {
+        s->suspect_valid = 1;
+        s->suspect_hash = s->inflight_hash;
+        s->inflight_valid = 0;
+        s->inflight_hash = 0;
+    }
+    pthread_mutex_unlock(&s->lock);
+    return adopted;
+}
+
+int state_is_suspect(sentinel_state_t *s, unsigned hash) {
+    if(!s) {
+        return -1;
+    }
+    pthread_mutex_lock(&s->lock);
+    int match = s->suspect_valid && s->suspect_hash == hash;
+    if(match){
+        s->suspect_valid = 0;
+    }
+    pthread_mutex_unlock(&s->lock);
+    return match;
+}
