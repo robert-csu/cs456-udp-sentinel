@@ -1,4 +1,8 @@
+#define _POSIX_C_SOURCE 200809L
 
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,6 +57,7 @@ static pid_t restart_sentinel(int epoch) {
         /* replace child with tsentinel executable */
         execl(SENTINEL_PATH,
               SENTINEL_PATH,
+            "--standby",
             "--no-crash",
             (char *)NULL);
         
@@ -250,7 +255,6 @@ int main(void)
                 &epoch,
                 &seq,
                 &timestamp,
-                &epoch,
                 &consumed
             );
 
