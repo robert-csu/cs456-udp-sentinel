@@ -21,7 +21,7 @@
 #define TIMEOUT_VAL (T_MS * MAX_MISSED_HEARTBEAT)
 
 /* where sentinel should be executed from */
-#define SENTINEL_PATH "./sentinel"
+#define SENTINEL_PATH "./bin/sentinel"
 
 /* track the current sentinel and heatbeat generation */
 static int current_epoch = -1;
