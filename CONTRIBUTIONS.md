@@ -24,5 +24,7 @@
 ## Tyler Orwa
 ### Part 1:
 - Attacker:
-    Implemented the heartbeat spoofer and replay attack using Python. The heartbeat spoofer uses forged datagrams sent to the monitor to relay an alive sentinel. The replay attack uses a sniffed heartbeat to replay at the same interval to the monitor to relay an alive sentinel.  Tested functionality of both in sending heartbeats and interacting with the sentinel during runtime. Wrote the '*Service Overview*' and the attacker portion of the '*Execution & Setup Instructions*'
+    Implemented the **Heartbeat Spoofer** and **Replay Attack** using Python. The heartbeat spoofer uses forged datagrams sent to the monitor to relay an alive sentinel. The replay attack uses a sniffed heartbeat to replay at the same interval to the monitor to relay an alive sentinel.  Tested functionality of both in sending heartbeats and interacting with the sentinel during runtime. Wrote the '*Service Overview*' and the attacker portion of the '*Execution & Setup Instructions*'
 ### Part 2:
+- Attacker:
+    Implemented the **Induced False Failover** script using Python, wrote the Adversarial Audit Summary and the Execution & Setup instructions for the attacker script. The script drops heartbeats to the monitor between its miss window and leaves the primary up and watches for a false failover scenario. It then outputs timestamp markers and a verdict for audit purposes.
