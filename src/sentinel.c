@@ -86,7 +86,79 @@ static int open_listener(int port) {
     }
 }
 
-static void handle_datagram(const blacklist_t *bl, char *buf, ssize_t len, const char *ip, const char *from) {
+static void send_reply(int sock, const struct sockaddr_in *sender, const char *msg) {
+    if(sendto(sock, msg, strlen(msg), 0, (struct sockaddr *)sender, sizeof *sender) < 0) {
+        perror("sendto");
+    }
+}
+
+static const char *control_error(const char *buf) {
+    const char *body = strchr(buf, '|');
+    if(!body || strncmp(body + 1, "ip=", 3) != 0) {
+        return "bad format";
+    }
+    return strchr(body + 4, '|') ? "bad format" : "bad ip";
+}
+
+static void handle_pkt(sentinel_state_t *state, char *buf, const char *ip, const char *from) {
+    pkt_t pkt;
+    pkt_err_t err = parse_pkt(buf, &pkt);
+    if(err != PKT_OK) {
+        printf("dropped from %s: %s\n", from, pkt_strerror(err));
+        return;
+    }
+    state_record_hit(state, ip, hb_now_ms());
+    const char *verdict = state_query(state, ip, NULL) == 1 ? "blocked" : "accepted";
+    printf("%s %s (dst_port %d, seq %d)", verdict, from, pkt.dst_port, pkt.seq);
+    if(strcmp(pkt.src, ip) != 0) {
+        printf(" [claims src=%s]", pkt.src);
+    }
+    printf("\n");
+
+}
+
+static void handle_control(sentinel_state_t *state, int sock, const struct sockaddr_in *sender, msg_type_t type, char *buf, size_t len, const char *from) {
+    char target[SRC_IP_LEN];
+    int parsed = type == CTL_BLOCK ? block_parse(buf, len, target) :
+                type == CTL_UNBLOCK ? unblock_parse(buf, len, target) :
+                query_parse(buf, len, target);
+
+    char reply[64];
+    if(parsed != CTL_OK){
+        snprintf(reply, sizeof reply, REPLY_ERR_FMT, control_error(buf));
+        printf("rejected from %s: %s\n", from, reply);
+        send_reply(sock, sender, reply);
+        return;
+    }
+
+    if(type == CTL_QUERY) {
+        int hits = 0;
+        if(state_query(state, target, &hits) == 1) {
+            snprintf(reply, sizeof reply, REPLY_QUERY_BLOCKED_FMT, hits);
+        }
+        else{
+            snprintf(reply, sizeof reply, REPLY_QUERY_ALLOWED_FMT, hits);
+        }
+    }
+    else if(type == CTL_BLOCK) {
+        if(state_block(state, target) == STATE_FULL) {
+            snprintf(reply, sizeof reply, REPLY_ERR_FMT, "blacklist full");
+        }
+        else {
+            snprintf(reply, sizeof reply, REPLY_BLOCKED_FMT, target);
+        }
+    }
+    else { // UNBLOCK
+        state_unblock(state, target);
+        snprintf(reply, sizeof reply, REPLY_UNBLOCKED_FMT, target);
+    }
+
+    printf("control message from %s: %s\n", from, reply);
+    send_reply(sock, sender, reply);
+
+}
+
+static void handle_datagram(sentinel_state_t *state, int sock, const struct sockaddr_in *sender, char *buf, ssize_t len, const char *ip, const char *from) {
     if(len > MAX_PKT_SIZE) {
         printf("dropped from %s: datagram of %zd bytes exceeds the %d byte limit\n", from, len, MAX_PKT_SIZE);
         return;
@@ -98,21 +170,24 @@ static void handle_datagram(const blacklist_t *bl, char *buf, ssize_t len, const
         return;
     }
 
-    pkt_t pkt;
-    pkt_err_t err = parse_pkt(buf, &pkt);
-    if(err != PKT_OK) {
-        printf("dropped from %s: %s\n", from, pkt_strerror(err));
-        return;
+    switch(dispatch(buf, (size_t)len)){
+        case CTL_PKT:
+            handle_pkt(state, buf, ip, from);
+            break;
+        case CTL_BLOCK:
+            handle_control(state, sock, sender, CTL_BLOCK, buf, (size_t)len, from);
+            break;
+        case CTL_UNBLOCK:
+            handle_control(state, sock, sender, CTL_UNBLOCK, buf, (size_t)len, from);
+            break;
+        case CTL_QUERY:
+            handle_control(state, sock, sender, CTL_QUERY, buf, (size_t)len, from);
+            break;
+        default:
+            printf("rejected from %s: unknown message type\n", from);
+            send_reply(sock, sender, "ERR unknown type");
+            break;
     }
-
-
-    // the blacklist is checked against the real sender address, not the src= field
-    const char *verdict = is_blacklisted(bl, ip) != 0 ? "blocked" : "accepted";
-    printf("%s %s (dst_port %d, seq %d)", verdict, from, pkt.dst_port, pkt.seq);
-    if(strcmp(pkt.src, ip) != 0) {
-        printf(" [claims src=%s]", pkt.src);
-    }
-    printf("\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -263,7 +338,7 @@ int main(int argc, char *argv[]) {
         char from[INET_ADDRSTRLEN + 8];
         inet_ntop(AF_INET, &sender.sin_addr, ip, sizeof ip);
         snprintf(from, sizeof from, "%s:%d", ip, ntohs(sender.sin_port));
-        handle_datagram(&state.blacklist, buf, len, ip, from);
+        handle_datagram(&state, sock, &sender, buf, len, ip, from);
     }
 
     // closes everything

@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# test_oversize.sh - the sentinel must detect oversized datagrams with their real length and keep running.
-# Needs only the primary sentinel; UDP port PKT_PORT must be free.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SENTINEL="$ROOT/bin/sentinel"
