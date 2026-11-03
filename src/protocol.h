@@ -54,4 +54,7 @@
 #define CHECKPOINT_TMP "state/checkpoint.tmp"
 #define CHECKPOINT_PREV "state/checkpoint.prev"
 
+#define BIND_RETRY_MS 2000
+#define BIND_RETRY_STEP_MS 100
+
 #endif

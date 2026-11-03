@@ -8,11 +8,14 @@
 #include <pthread.h>
 #include <errno.h>
 #include <limits.h>
+#include <time.h>
 
 #include "protocol.h"
 #include "sentinel_core.h"
 #include "heartbeat.h"
 #include "fault.h"
+#include "state.h"
+#include "checkpoint.h"
 
 static atomic_int stop_request = 0;
 
@@ -22,8 +25,8 @@ static void on_signal(int sig) {
 }
 
 static void usage(FILE *out) {
-    fprintf(out, "usage: sentinel [--blacklist <path>] [--no-crash] [--seed <n>]\n"
-            "                [--crash-min-ms <n>] [--crash-max-ms <n>] [--help]\n");
+    fprintf(out, "usage: sentinel [--blacklist <path>] [--no-crash] [--seed <n>] [--standby]\n"
+        "                [--crash-min-ms <n>] [--crash-max-ms <n>] [--help]\n");
 }
 
 static int fill_addr(struct sockaddr_in *addr, int port) {
@@ -59,12 +62,28 @@ static int open_listener(int port) {
         perror("socket");
         return -1;
     }
-    if(bind(sock, (struct sockaddr *)&addr, sizeof addr) < 0) {
-        perror("bind");
+    
+    int yes = 1;
+    if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes) < 0) {
+        perror("setsockopt SO_REUSEADDR");
         close(sock);
         return -1;
     }
-    return sock;
+
+    for(int waited = 0; ; waited += BIND_RETRY_STEP_MS) {
+        if(bind(sock, (struct sockaddr *)&addr, sizeof addr) == 0) {
+            return sock;
+        }
+        int bind_errno = errno;
+        if(bind_errno != EADDRINUSE || waited >= BIND_RETRY_MS || atomic_load(&stop_request)) {
+            fprintf(stderr, "cannot bind %s:%d: %s (gave up after %d ms)\n", HOST, port, strerror(bind_errno), waited);
+            close(sock);
+            return -1;
+        }
+
+        struct timespec pause =  {.tv_sec = 0, .tv_nsec = BIND_RETRY_STEP_MS * 1000000L};
+        nanosleep(&pause, NULL);
+    }
 }
 
 static void handle_datagram(const blacklist_t *bl, char *buf, ssize_t len, const char *ip, const char *from) {
@@ -106,11 +125,14 @@ int main(int argc, char *argv[]) {
     int crash_max_ms = 20000; // 20 seconds
     int crash_pct = 100;
     unsigned seed = (unsigned)time(NULL) ^ (unsigned)getpid();
+    int standby = 0;
 
     // parse command-line options
     for(int i = 1; i < argc; i++) {
         if(strcmp(argv[i], "--no-crash") == 0) {
             no_crash = 1;
+        } else if(strcmp(argv[i], "--standby") == 0) {
+            standby = 1;
         } else if(strcmp(argv[i], "--blacklist") == 0) {
             if(++i >= argc) {
                 fprintf(stderr, "--blacklist needs a path\n");
@@ -161,6 +183,28 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     printf("loaded %d blacklist entries from %s\n", bl.count, blacklist_path);
+
+    sentinel_state_t state;
+    if(!standby) {
+        if(state_init(&state, &bl) != 0) {
+            fprintf(stderr, "failed to initialize sentinel state\n");
+            return 1;
+        }
+    }
+    else{
+        ckpt_source_t source = checkpoint_load(&state, &bl, CHECKPOINT_PATH, CHECKPOINT_PREV);
+        if(source == CKPT_SRC_ERR) {
+            fprintf(stderr, "cannot restore state\n");
+            return 1;
+        }
+        state.epoch++;
+        if(source == CKPT_SRC_BASE) {
+            printf("[%lld] [Service Restored] standby active, no usable checkpoint, using base blacklist (%d blocked IPs, epoch %d)\n", hb_now_ms(), state.blacklist.count, state.epoch);
+        }
+        else {
+            printf("[%lld] [Service Restored] standby active, loaded checkpoint v%d (%d blocked IPs, epoch %d)\n", hb_now_ms(), CKPT_VERSION, state.blacklist.count, state.epoch);
+        }
+    }
 
     int sock = open_listener(PKT_PORT);
     if(sock < 0) {
@@ -218,7 +262,7 @@ int main(int argc, char *argv[]) {
         char from[INET_ADDRSTRLEN + 8];
         inet_ntop(AF_INET, &sender.sin_addr, ip, sizeof ip);
         snprintf(from, sizeof from, "%s:%d", ip, ntohs(sender.sin_port));
-        handle_datagram(&bl, buf, len, ip, from);
+        handle_datagram(&state.blacklist, buf, len, ip, from);
     }
 
     // closes everything
