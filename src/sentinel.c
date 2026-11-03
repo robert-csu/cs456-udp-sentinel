@@ -88,7 +88,7 @@ static int open_listener(int port) {
 
 static void handle_datagram(const blacklist_t *bl, char *buf, ssize_t len, const char *ip, const char *from) {
     if(len > MAX_PKT_SIZE) {
-        printf("dropped from %s: datagram larger than %d bytes\n", from, MAX_PKT_SIZE);
+        printf("dropped from %s: datagram of %zd bytes exceeds the %d byte limit\n", from, len, MAX_PKT_SIZE);
         return;
     }
 
@@ -250,7 +250,7 @@ int main(int argc, char *argv[]) {
     while(!atomic_load(&stop_request)) {
         struct sockaddr_in sender;
         socklen_t sender_len = sizeof sender;
-        ssize_t len = recvfrom(sock, buf, sizeof buf, 0, (struct sockaddr *)&sender, &sender_len);
+        ssize_t len = recvfrom(sock, buf, sizeof buf, MSG_TRUNC, (struct sockaddr *)&sender, &sender_len);
         if(len < 0) {
             if(errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
                 continue;
