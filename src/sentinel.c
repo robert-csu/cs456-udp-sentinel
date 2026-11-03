@@ -313,7 +313,7 @@ int main(int argc, char *argv[]) {
     printf("listening on %s:%d\n", HOST, PKT_PORT);
 
     // heartbeat thread intialization
-    hb_args_t hb_args = {.port = HEARTBEAT_PORT, .stop = &stop_request, .sent = NULL};
+    hb_args_t hb_args = {.port = HEARTBEAT_PORT, .epoch = state.epoch, .stop = &stop_request, .sent = NULL};
     pthread_t hb;
     if(pthread_create(&hb, NULL, heartbeat_thread, &hb_args) != 0) {
         fprintf(stderr, "failed to create heartbeat thread\n");
