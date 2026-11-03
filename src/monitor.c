@@ -44,7 +44,7 @@ static pid_t restart_sentinel(int epoch) {
     if(pid == 0) {
         char epoch_buf[32];
 
-        snprinf(epoch_buf, sizeof(epoch_buf),
+        snprintf(epoch_buf, sizeof(epoch_buf),
                 "%d", epoch);
         
         /* pass the next epoch to sentinel */
@@ -243,7 +243,6 @@ int main(void)
             int pid;
             int epoch;
             int seq;
-            int epoch;
             long long timestamp;
             int consumed = 0;
 
@@ -316,7 +315,7 @@ int main(void)
                 printf("No heartbeat for %lld ms\n\n",
                        elapsed);
                 
-                if_offline = 1;
+                is_offline = 1;
 
                 /* start new sentinel w next epoch */
                 if (current_epoch >= 0 &&
@@ -333,7 +332,7 @@ int main(void)
                         log_event(log, "Failover Triggered");
                     }
                     else {
-                        log_event(log, "Failover Event Failed")
+                        log_event(log, "Failover Event Failed");
                     }
                 }
             }
