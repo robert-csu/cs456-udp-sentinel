@@ -14,10 +14,14 @@ PROG_BINS = $(addprefix $(BIN)/, $(PROGS))
 TEST_SRCS = $(wildcard $(TESTDIR)/test_*.c)
 TEST_BINS = $(patsubst $(TESTDIR)/%.c, $(BIN)/tests/%, $(TEST_SRCS))
 SCRIPT_TESTS = $(wildcard $(SCRIPTS)/test_*.sh)
+COMMON_OBJS = $(BUILD)/state.o $(BUILD)/checkpoint.o
 
 .PHONY: all tests test clean distclean
 
 all: $(PROG_BINS)
+
+$(BIN)/sentinel: $(BUILD)/sentinel.o $(COMMON_OBJS) | $(BIN)
+	$(CC) $(CFLAGS) -o $@ $^
 
 $(BIN)/%: $(BUILD)/%.o | $(BIN)
 	$(CC) $(CFLAGS) -o $@ $<
@@ -27,8 +31,8 @@ $(BUILD)/%.o: $(SRC)/%.c | $(BUILD)
 
 tests: $(TEST_BINS)
 
-$(BIN)/tests/%: $(TESTDIR)/%.c | $(BIN)/tests
-	$(CC) $(CFLAGS) -I$(SRC) -o $@ $<
+$(BIN)/tests/%: $(TESTDIR)/%.c $(COMMON_OBJS) | $(BIN)/tests
+	$(CC) $(CFLAGS) -I$(SRC) -o $@ $< $(COMMON_OBJS)
 
 test: all tests
 	@set -e; \

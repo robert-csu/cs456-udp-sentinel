@@ -40,6 +40,20 @@ typedef enum{
     HB_ERR_RANGE = -3 // pid <= 0, seq < 0, ts < 0
 } hb_err_t;
 
+// control message types
+typedef enum{
+    CTL_UNKNOWN = 0, // unknown message type
+    CTL_PKT = 1, // packet message
+    CTL_BLOCK = 2, // block message
+    CTL_UNBLOCK = 3, // unblock message
+    CTL_QUERY = 4 // query message
+} msg_type_t;
+
+typedef enum{
+    CTL_OK  = 0, // control okay message
+    CTL_ERR_FORMAT = -1 // control format error
+} ctl_err_t;
+
 typedef struct {
     char src[SRC_IP_LEN];
     int dst_port;
@@ -51,6 +65,9 @@ typedef struct{
     char ips[BL_MAX][SRC_IP_LEN];
     int count;
 }blacklist_t;
+
+// Function pointer type for parsing control messages
+typedef int (*parse_fn)(const char *buf, size_t len, char *ip_out);
 
 // Parses a packet from a string buffer
 static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
@@ -104,6 +121,100 @@ static inline pkt_err_t parse_pkt(const char *buf, pkt_t *out){
     strcpy(out->payload, payload);
 
     return PKT_OK;
+}
+
+static inline msg_type_t dispatch(const char *buf, size_t len){
+    if(!buf || !len) {
+        return CTL_UNKNOWN;
+    }
+
+    char *delim = memchr(buf, '|', len);
+    if(!delim) {
+        return CTL_UNKNOWN;
+    }
+    size_t type_length = delim - buf;
+    if(type_length > 7) {
+        return CTL_UNKNOWN;
+    }
+
+    char type[8];
+
+    memcpy(type, buf, type_length);
+    type[type_length] = '\0';
+
+    if (strcmp(type, "PKT") == 0) {
+        return CTL_PKT;
+    }
+
+    if (strcmp(type, "QUERY") == 0) {
+        return CTL_QUERY;
+    }
+
+    if (strcmp(type, "BLOCK") == 0) {
+        return CTL_BLOCK;
+    }
+
+    if (strcmp(type, "UNBLOCK") == 0) {
+        return CTL_UNBLOCK;
+    }
+
+    return CTL_UNKNOWN;
+}
+
+// Shared parser for "<TYPE>|ip=<ip>"
+static inline int ctl_parse_ip(const char *buf, size_t len, const char *fmt, char *ip_out){
+    if(!buf || !len || !fmt || !ip_out) {
+        return CTL_ERR_FORMAT;
+    }
+    if(len > MAX_PKT_SIZE) {
+        return CTL_ERR_FORMAT;
+    }
+
+    char copy[MAX_PKT_SIZE + 1];
+    memcpy(copy, buf, len);
+    copy[len] = '\0';
+
+    size_t msg_len = len;
+    if(copy[msg_len - 1] == '\n') {
+        msg_len--;
+        if(msg_len > 0 && copy[msg_len - 1] == '\r') {
+            msg_len--;
+        }
+    }
+    copy[msg_len] = '\0';
+
+    char src[SRC_IP_LEN] = {0};
+    int consumed = 0;
+    int matched = sscanf(copy, fmt, src, &consumed);
+    if(matched != 1) {
+        return CTL_ERR_FORMAT;
+    }
+    if(consumed < 0 || (size_t)consumed != msg_len) {
+        return CTL_ERR_FORMAT;
+    }
+
+    struct in_addr addr;
+    if(inet_pton(AF_INET, src, &addr) != 1) {
+        return CTL_ERR_FORMAT;
+    }
+
+    memcpy(ip_out, src, SRC_IP_LEN);
+    return CTL_OK;
+}
+
+// Parses "BLOCK|ip=<ip>"
+static inline int block_parse(const char *buf, size_t len, char *ip_out){
+    return ctl_parse_ip(buf, len, BL_FMT_IN "%n", ip_out);
+}
+
+// Parses "UNBLOCK|ip=<ip>"
+static inline int unblock_parse(const char *buf, size_t len, char *ip_out){
+    return ctl_parse_ip(buf, len, UNBL_FMT_IN "%n", ip_out);
+}
+
+// Parses "QUERY|ip=<ip>"
+static inline int query_parse(const char *buf, size_t len, char *ip_out){
+    return ctl_parse_ip(buf, len, QUERY_FMT_IN "%n", ip_out);
 }
 
 // 1 = blocked, 0 = not blocked, -1 = NULL argument
@@ -253,19 +364,19 @@ static inline bl_err_t blacklist_load(const char *path, blacklist_t *bl) {
     return result;
 }
 
-// writes HEARTBEAT|pid=<n>|seq=<n>|ts=<ms since start> into buf; returns the length written
-static inline int format_heartbeat(char *buf, size_t n, int pid, int seq, long long ts) {
+// writes HEARTBEAT|pid=<n>|epoch=<n>|seq=<n>|ts=<ms since start> into buf; returns the length written
+static inline int format_heartbeat(char *buf, size_t n, int pid, int epoch, int seq, long long ts) {
     if(!buf) {
         return HB_ERR_NULL;
     }
-    if(pid <=0 || seq < 0 || ts < 0) {
+    if(pid <=0 || epoch < 0 || seq < 0 || ts < 0) {
         if(n > 0) {
             buf[0] = '\0';
         }
         return HB_ERR_RANGE;
     }
     
-    int written  = snprintf(buf, n, HB_FMT_OUT, pid, seq, ts);
+    int written  = snprintf(buf, n, HB_FMT_OUT, pid, epoch, seq, ts);
 
     if(written < 0 || (size_t)written >= n) {
         if(n > 0) {
@@ -308,6 +419,19 @@ static inline long long now_ms(void) {
         return -1;
     }
     return timespec_to_ms(&ts);
+}
+
+// standard constrants for FNV-1a hash
+static inline uint32_t packet_hash(const char *buf, size_t len) {
+    uint32_t hash = 0x811C9DC5u;
+    if(!buf) {
+        return hash;
+    }
+    for(size_t i = 0; i < len; i++) {
+        hash ^= (unsigned char)buf[i];
+        hash *= 0x01000193u;
+    }
+    return hash;
 }
 
 // short description of a parse_pkt result, or "unknown error"; never NULL
