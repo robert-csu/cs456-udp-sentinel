@@ -19,7 +19,21 @@
     
 ## Sam Berman
 ### Part 1:
+Developed the initial monitoring component in C using UDP sockets to receive heartbeat messages from Sentinel.
+Implemented heartbeat timeout detection to identify when the primary Sentinel stopped responding.
+Added console output to report heartbeat activity and alert when the Sentinel was considered offline.
+Helped establish the overall project approach and system architecture.
+Participated in testing the monitoring functionality, including demonstrations of heartbeat spoofing and replay attacks.
+Recorded demo video
 ### Part 2:
+Extended the monitoring component to support automatic failover when the primary Sentinel stops sending heartbeats.
+Implemented replacement process creation using fork() and execl() to launch a standby Sentinel.
+Added heartbeat validation using process IDs (PIDs), sequence numbers, and epochs to reject stale or unexpected heartbeat messages.
+Implemented recovery event logging for crash detection, failover initiation, and service restoration.
+Developed and ran tests to demonstrate how the updated monitor responds to replayed heartbeats, spoofed PIDs, and unauthorized epoch changes.
+Assisted with integration testing to verify compatibility between the monitor, checkpointing system, and replacement Sentinel.
+Contributed the Execution & Setup Instructions section of the final report.
+Prepared and coordinated the video demonstration of the updated monitoring and recovery functionality.
 
 ## Tyler Orwa
 ### Part 1:
