@@ -190,6 +190,24 @@ static void handle_datagram(sentinel_state_t *state, int sock, const struct sock
     }
 }
 
+typedef struct {
+    sentinel_state_t *state;
+    atomic_int *stop;
+} checkpoint_args_t;
+
+static void *checkpoint_thread(void *arg) {
+    checkpoint_args_t args = *(checkpoint_args_t *)arg;
+
+    while(!atomic_load(args.stop)) {
+        ckpt_err_t err = checkpoint_save(args.state, CHECKPOINT_PATH, CHECKPOINT_TMP, CHECKPOINT_PREV);
+        if(err != CKPT_OK) {
+            fprintf(stderr, "[%lld] WARN checkpoint save failed: %s\n", hb_now_ms(), checkpoint_strerror(err));
+        }
+        fault_sleep_ms(CHECKPOINT_INTERVAL_MS, args.stop);
+    }
+    return NULL;
+}
+
 int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IOLBF, 0);
 
@@ -320,6 +338,21 @@ int main(int argc, char *argv[]) {
         printf("crash injection on: seed %u, between %d and %d ms\n", seed, crash_min_ms, crash_max_ms);
     }
 
+    // initialize checkpoint thread
+    checkpoint_args_t ckpt_args = {.state = &state, .stop = &stop_request};
+    pthread_t ckpt;
+    if(pthread_create(&ckpt, NULL, checkpoint_thread, &ckpt_args) != 0) {
+        fprintf(stderr, "failed to create checkpoint thread\n");
+        atomic_store(&stop_request, 1);
+        if(fault_started) {
+            pthread_join(fault, NULL);
+        }
+        pthread_join(hb, NULL);
+        close(sock);
+        return 1;
+    }
+    printf("checkpointing -> %s every %d ms\n", CHECKPOINT_PATH, CHECKPOINT_INTERVAL_MS);
+
     // receive and handle datagrams
     char buf[MAX_PKT_SIZE + 1];
     while(!atomic_load(&stop_request)) {
@@ -346,6 +379,7 @@ int main(int argc, char *argv[]) {
     if(fault_started) {
         pthread_join(fault, NULL);
     }
+    pthread_join(ckpt, NULL);
     pthread_join(hb, NULL);
     close(sock);
     (void)no_crash;
