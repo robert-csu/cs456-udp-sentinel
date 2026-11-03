@@ -206,6 +206,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = on_signal;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+
     int sock = open_listener(PKT_PORT);
     if(sock < 0) {
         return 1;
@@ -213,12 +220,6 @@ int main(int argc, char *argv[]) {
     printf("listening on %s:%d\n", HOST, PKT_PORT);
 
     // heartbeat thread intialization
-    struct sigaction sa;
-    memset(&sa, 0, sizeof sa);
-    sa.sa_handler = on_signal;
-    sigemptyset(&sa.sa_mask);
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGTERM, &sa, NULL);
     hb_args_t hb_args = {.port = HEARTBEAT_PORT, .stop = &stop_request, .sent = NULL};
     pthread_t hb;
     if(pthread_create(&hb, NULL, heartbeat_thread, &hb_args) != 0) {
