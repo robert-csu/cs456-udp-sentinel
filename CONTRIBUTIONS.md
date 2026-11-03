@@ -5,6 +5,9 @@
 - Client and Documentation: 
     Implemented the UDP client in C to send test packets to Sentinel using the shared protocol format, including sequential packet numbers, timed packet transmission, and error handling. Tested client functionality by verifying that Sentinel successfully received and accepted all ten packets. Wrote the Adversarial Audit Summary documenting the baseline heartbeat vulnerability to spoofing and explaining how the attack script attempts to exploit unauthenticated heartbeat messages.
 ### Part 2:
+- Client: Updated the UDP client to include a Sentinel state query after sending test packets, added response handling to display the returned hit count, and implemented a 2-second receive timeout. Tested client communication with both the primary and recovered standby, verifying that the hit count was preserved across recovery.
+
+- Written Report: Wrote the redundancy justification explaining the team's choice of passive redundancy, including the trade-offs involving synchronization overhead, implementation complexity, and Mean Time to Repair.
 
 ## Robert O'Neil
 ### Part 1:
